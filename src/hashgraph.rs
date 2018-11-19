@@ -5,6 +5,7 @@ use peer::PeerId;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::repeat_with;
 
+#[derive(Clone)]
 pub struct Hashgraph(BTreeMap<EventHash, Event>);
 
 impl Hashgraph {
