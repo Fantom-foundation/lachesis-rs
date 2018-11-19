@@ -1,5 +1,6 @@
 use ring::digest::Digest;
 use serde::ser::{Serialize, Serializer};
+use std::hash::{Hash, Hasher};
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy)]
@@ -8,6 +9,12 @@ pub struct EventHash(pub Digest);
 impl Serialize for EventHash {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         self.0.as_ref().serialize(serializer)
+    }
+}
+
+impl Hash for EventHash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state);
     }
 }
 

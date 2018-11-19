@@ -7,7 +7,7 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 use ring::signature;
 use round::Round;
-use std::collections::{BTreeSet, BTreeMap, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::FromIterator;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -34,13 +34,13 @@ pub struct Node<P: Peer> {
     hashgraph: Hashgraph,
     head: Option<EventHash>,
     network: Vec<P>,
-    pending_events: BTreeSet<EventHash>,
+    pending_events: HashSet<EventHash>,
     // TODO: Plain keys in memory? Not great. See https://stackoverflow.com/a/1263421 for possible
     // alternatives
     pk: signature::Ed25519KeyPair,
     rounds: Vec<Round>,
     super_majority: usize,
-    votes: BTreeMap<(EventHash, EventHash), bool>,
+    votes: HashMap<(EventHash, EventHash), bool>,
 }
 
 impl<P: Peer> Node<P> {
@@ -50,11 +50,11 @@ impl<P: Peer> Node<P> {
             hashgraph: Hashgraph::new(),
             head: None,
             network: Vec::new(),
-            pending_events: BTreeSet::new(),
+            pending_events: HashSet::new(),
             pk,
             rounds: Vec::new(),
             super_majority: 0,
-            votes: BTreeMap::new(),
+            votes: HashMap::new(),
         };
         node.create_new_head(None)?;
         Ok(node)
@@ -94,7 +94,7 @@ impl<P: Peer> Node<P> {
     }
 
     pub fn decide_fame(&mut self) -> Result<BTreeSet<usize>, Error> {
-        let mut famous_events = BTreeMap::new();
+        let mut famous_events = HashMap::new();
         let mut rounds_done = BTreeSet::new();
         for (round, veh) in self.get_voters().into_iter() {
             let witnesses = self.get_round_witnesses(round, &veh)?;
@@ -169,7 +169,7 @@ impl<P: Peer> Node<P> {
         &mut self,
         hash: &EventHash,
         round: usize,
-        unique_famous_witnesses: &BTreeSet<EventHash>
+        unique_famous_witnesses: &HashSet<EventHash>
     ) -> Result<(), Error> {
         let timestamp_deciders = self.get_timestamp_deciders(hash, unique_famous_witnesses)?;
         let times = timestamp_deciders.into_iter()
@@ -187,9 +187,9 @@ impl<P: Peer> Node<P> {
     fn get_timestamp_deciders(
         &self,
         hash: &EventHash,
-        unique_famous_witnesses: &BTreeSet<EventHash>
-    ) -> Result<BTreeSet<EventHash>, Error> {
-        let mut result = BTreeSet::new();
+        unique_famous_witnesses: &HashSet<EventHash>
+    ) -> Result<HashSet<EventHash>, Error> {
+        let mut result = HashSet::new();
         for unique_famous_witness in unique_famous_witnesses {
             let self_ancestors = self.hashgraph.self_ancestors(unique_famous_witness).into_iter();
             for self_ancestor in self_ancestors {
@@ -204,7 +204,7 @@ impl<P: Peer> Node<P> {
     }
 
     #[inline]
-    fn get_unique_famous_witnesses(&self, round: usize) -> Result<BTreeSet<EventHash>, Error> {
+    fn get_unique_famous_witnesses(&self, round: usize) -> Result<HashSet<EventHash>, Error> {
         let mut famous_witnesses = self.get_famous_witnesses(round);
         for w in famous_witnesses.clone() {
             for w1 in famous_witnesses.clone() {
@@ -221,8 +221,8 @@ impl<P: Peer> Node<P> {
     }
 
     #[inline]
-    fn get_famous_witnesses(&self, round: usize) -> BTreeSet<EventHash> {
-        BTreeSet::from_iter(
+    fn get_famous_witnesses(&self, round: usize) -> HashSet<EventHash> {
+        HashSet::from_iter(
             self.rounds[round].witnesses().into_iter()
                 .filter(|eh| self.hashgraph.get(eh).unwrap().is_famous())
         )
@@ -236,7 +236,7 @@ impl<P: Peer> Node<P> {
     }
 
     #[inline]
-    fn get_vote(&self, witnesses: &BTreeSet<EventHash>, eh: &EventHash) -> (bool, usize) {
+    fn get_vote(&self, witnesses: &HashSet<EventHash>, eh: &EventHash) -> (bool, usize) {
         let mut total = 0;
         for w in witnesses {
             if self.votes[&(*w, *eh)] {
@@ -266,7 +266,7 @@ impl<P: Peer> Node<P> {
         &self,
         round: usize,
         hash: &EventHash
-    ) -> Result<BTreeSet<EventHash>, Error> {
+    ) -> Result<HashSet<EventHash>, Error> {
         let mut hits: HashMap<PeerId, usize> = HashMap::new();
         let event = self.hashgraph.get(hash)?;
         let prev_round = round - 1;
@@ -286,7 +286,7 @@ impl<P: Peer> Node<P> {
         let map_iter = hits.into_iter()
             .filter(|(_,v)| *v > self.super_majority)
             .map(|(c, _)| r.witnesses_map()[&c].clone());
-        Ok(BTreeSet::from_iter(map_iter))
+        Ok(HashSet::from_iter(map_iter))
     }
 
     #[inline]
