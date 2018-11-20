@@ -1,6 +1,6 @@
-use crate::state::{State, StateTransition};
+use crate::state::{State, Program};
 
-pub trait VirtualMachine<T: State, U: StateTransition> {
-    fn transition(state:T, transition: U) -> U;
+pub trait VirtualMachine<T: State, U: Program> {
+    fn transition(state:T, program: U) -> U;
 }
 

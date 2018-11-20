@@ -1,8 +1,7 @@
-use crate::transaction::{Transaction, TransactionHash, TransactionOrdering};
+use crate::transaction::{Transaction, TransactionHash, AbsoluteOrdering};
 
-pub trait Node {
-    fn submit_transaction(tx: Transaction);
-    fn get_transaction_by_hash(tx_hash: TransactionHash) -> (TransactionOrdering, Transaction);
-    fn get_transaction_by_order(tx_order: TransactionOrdering) -> (TransactionHash, Transaction);
+pub trait Node<T: Transaction>{
+    fn get_transaction_by_hash(tx_hash: TransactionHash) -> T;
+    fn get_transaction_by_order(tx_order: AbsoluteOrdering) -> T;
 }
 

@@ -1,13 +1,15 @@
+use std::cmp::Ordering;
+
 pub enum TransactionStatus {
     Pending,
     Failed,
     Complete,
 }
 
-pub struct Transaction {
-
+pub trait Transaction {
+    fn get_absolute_ordering() -> AbsoluteOrdering;
 }
 
-pub type TransactionOrdering = u64;
+pub type AbsoluteOrdering = u64;
 
 pub type TransactionHash = [u8; 32];

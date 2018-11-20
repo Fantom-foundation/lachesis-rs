@@ -2,6 +2,6 @@ pub trait State {
 
 }
 
-pub trait StateTransition {
+pub trait Program {
 
 }

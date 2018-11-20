@@ -2,6 +2,5 @@
 
 members = [
     "lachesis-rs",
-    "http-cli-client",
     "fal",
 ]
