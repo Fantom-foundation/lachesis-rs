@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 pub enum TransactionStatus {
     Pending,
     Failed,
