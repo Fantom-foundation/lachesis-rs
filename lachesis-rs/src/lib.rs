@@ -1,5 +1,6 @@
 extern crate bincode;
 #[macro_use] extern crate failure;
+#[macro_use] extern crate proptest;
 extern crate rand;
 extern crate ring;
 extern crate serde;

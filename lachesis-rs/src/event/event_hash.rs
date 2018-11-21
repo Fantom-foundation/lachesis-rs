@@ -3,7 +3,7 @@ use serde::ser::{Serialize, Serializer};
 use std::hash::{Hash, Hasher};
 use std::cmp::Ordering;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct EventHash(pub Digest);
 
 impl Serialize for EventHash {
