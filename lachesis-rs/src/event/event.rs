@@ -250,7 +250,6 @@ proptest! {
 
     #[test]
     fn it_should_have_different_hash_on_different_timestamps(s1 in 0u64..10000, s2 in 0u64..10000) {
-
         let mut event1 = Event::new(vec![], None, Vec::new());
         let mut event2 = Event::new(vec![], None, Vec::new());
         let mut event3 = Event::new(vec![], None, Vec::new());
