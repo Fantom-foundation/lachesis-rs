@@ -11,7 +11,6 @@ pub trait Hashgraph {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event, Error>;
     fn get(&self, id: &EventHash) -> Result<&Event, Error>;
     fn insert(&mut self, hash: EventHash, event: Event);
-    fn extract(&mut self, id: &EventHash) -> Result<Event, Error>;
     fn ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
     fn other_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
     fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
@@ -43,10 +42,6 @@ impl Hashgraph for BTreeHashgraph {
 
     fn insert(&mut self, hash: EventHash, event: Event) {
         self.0.insert(hash, event);
-    }
-
-    fn extract(&mut self, id: &EventHash) -> Result<Event, Error> {
-        self.0.remove(id).ok_or(Error::from(HashgraphError::EventNotFound))
     }
 
     fn ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash> {

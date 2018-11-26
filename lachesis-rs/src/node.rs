@@ -472,7 +472,7 @@ impl<P: Peer + Clone> Node<P> {
             }?;
             if is_valid_event {
                 let mut rhg = remote_hg.borrow_mut();
-                self.add_event(rhg.extract(&eh)?)?;
+                self.add_event(rhg.get(&eh)?.clone())?;
             }
         }
         Ok(diff)
@@ -480,9 +480,10 @@ impl<P: Peer + Clone> Node<P> {
 
     #[inline]
     fn maybe_change_head(&mut self, remote_head: EventHash, remote_hg: Rc<RefCell<Hashgraph>>) -> Result<(), Error> {
-        let remote_head_event = remote_hg.borrow().get(&remote_head).unwrap().clone();
+        let hg = remote_hg.borrow();
+        let remote_head_event = hg.get(&remote_head)?;
 
-        if self.is_valid_event(&remote_head, &remote_head_event)? {
+        if self.is_valid_event(&remote_head, remote_head_event)? {
             let current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?.clone()
                 .ok_or(Error::from(NodeError::NoHead))?;
             let parents = Parents(current_head, remote_head);
@@ -521,12 +522,12 @@ impl<P: Peer + Clone> Node<P> {
             parents,
             self.pk.public_key_bytes().to_vec()
         );
-        let hash = event.hash()?;
-        let signature = self.pk.sign(hash.as_ref());
-        event.sign(EventSignature(signature));
         if event.is_root() {
             event.set_timestamp(get_current_timestamp())
         }
+        let hash = event.hash()?;
+        let signature = self.pk.sign(hash.as_ref());
+        event.sign(EventSignature(signature));
         self.add_event(event)?;
         let mut current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *current_head = Some(hash);
@@ -540,5 +541,189 @@ impl<P: Peer + Clone> Node<P> {
         let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let mut hashgraph = mutex_guard.borrow_mut();
         Ok(hashgraph.insert(hash, e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use event::{Event, EventHash, EventSignature, Parents};
+    use hashgraph::*;
+    use peer::{Peer, PeerId};
+    use ring::{rand, signature};
+    use ring::digest::{digest, SHA256};
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+    use std::iter::FromIterator;
+    use std::rc::Rc;
+    use std::sync::mpsc::channel;
+    use super::Node;
+
+    fn create_node() -> Node<DummyPeer> {
+        let rng = rand::SystemRandom::new();
+        let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
+        let (_, receiver) = channel();
+        let hashgraph = BTreeHashgraph::new();
+        Node::new(kp, receiver, Rc::new(RefCell::new(hashgraph))).unwrap()
+    }
+
+    fn create_useless_peer(id: PeerId) -> DummyPeer {
+        let digest = digest(&SHA256, b"42");
+        let event = EventHash(digest);
+        DummyPeer {
+            hashgraph: BTreeHashgraph::new(),
+            head: event,
+            id,
+        }
+    }
+
+    #[derive(Clone)]
+    struct DummyPeer {
+        hashgraph: BTreeHashgraph,
+        head: EventHash,
+        id: PeerId,
+    }
+
+    impl Peer for DummyPeer {
+        fn get_sync(&self, _pk: PeerId) -> (EventHash, Rc<RefCell<Hashgraph>>) {
+            (self.head.clone(), Rc::new(RefCell::new(self.hashgraph.clone())))
+        }
+        fn send_sync(&self, _msg: (EventHash, Rc<RefCell<Hashgraph>>)) {}
+        fn id(&self) -> &PeerId {
+            &self.id
+        }
+    }
+
+    #[test]
+    fn it_should_calculate_super_majority_correctly() {
+        let mut node = create_node();
+        let peer1 = create_useless_peer(vec![1]);
+        let peer2 = create_useless_peer(vec![2]);
+        let peer3 = create_useless_peer(vec![3]);
+        let peer4 = create_useless_peer(vec![4]);
+        assert_eq!(node.super_majority, 0);
+        node.add_node(peer1);
+        assert_eq!(node.super_majority, 0);
+        node.add_node(peer2);
+        assert_eq!(node.super_majority, 1);
+        node.add_node(peer3);
+        assert_eq!(node.super_majority, 2);
+        node.add_node(peer4);
+        assert_eq!(node.super_majority, 2);
+    }
+
+    #[test]
+    fn it_should_add_event_correctly() {
+        let event = Event::new(vec![], None, vec![2]);
+        let hash = event.hash().unwrap();
+        let mut node = create_node();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        node.add_event(event.clone()).unwrap();
+        assert_eq!(node.pending_events, HashSet::from_iter(vec![head, hash.clone()].into_iter()));
+        let mutex_guard = node.hashgraph.lock().unwrap();
+        let hashgraph = mutex_guard.borrow();
+        assert!(hashgraph.contains_key(&hash));
+        assert_eq!(hashgraph.get(&hash).unwrap(), &event);
+    }
+
+    #[test]
+    fn it_should_create_a_new_head() {
+        let mut node = create_node();
+        let prev_head = node.head.lock().unwrap().unwrap().clone();
+        node.create_new_head(Some(Parents(prev_head.clone(), prev_head.clone()))).unwrap();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        assert_ne!(head, prev_head);
+        let mutex_guard = node.hashgraph.lock().unwrap();
+        let hashgraph = mutex_guard.borrow();
+        let head_event = hashgraph.get(&head).unwrap();
+        assert!(head_event.is_valid(&head).unwrap());
+        assert_eq!(head_event.parents(), &Some(Parents(prev_head.clone(), prev_head.clone())));
+    }
+
+    #[test]
+    fn root_event_should_be_valid_in_node() {
+        let node = create_node();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        let event = {
+            let mutex_guard = node.hashgraph.lock().unwrap();
+            let hashgraph = mutex_guard.borrow();
+            hashgraph.get(&head).unwrap().clone()
+        };
+        assert!(node.is_valid_event(&head, &event).unwrap());
+    }
+
+    #[test]
+    fn invalid_event_should_be_invalid_in_node() {
+        let node = create_node();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        let event = {
+            let mutex_guard = node.hashgraph.lock().unwrap();
+            let hashgraph = mutex_guard.borrow();
+            hashgraph.get(&head).unwrap().clone()
+        };
+        use ring::digest::{digest, SHA256};
+        let real_hash = EventHash(digest(&SHA256, &vec![1]));
+        assert!(!node.is_valid_event(&real_hash, &event).unwrap());
+    }
+
+    #[test]
+    fn event_with_invalid_history_should_be_invalid_in_node() {
+        let mut node = create_node();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        let mut event = Event::new(vec![], Some(Parents(head.clone(), head.clone())), node.pk.public_key_bytes().to_vec());
+        let hash = event.hash().unwrap();
+        let signature = node.pk.sign(hash.as_ref());
+        event.sign(EventSignature(signature));
+        node.add_event(event.clone()).unwrap();
+        assert!(!node.is_valid_event(&hash, &event).unwrap());
+    }
+
+    #[test]
+    fn it_should_create_a_head_with_head_and_remote_head_parents() {
+        let mut node = create_node();
+        let remote_node = create_node();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        let remote_head = remote_node.head.lock().unwrap().unwrap().clone();
+        let remote_hashgraph = {
+            let mutex_guard = remote_node.hashgraph.lock().unwrap();
+            (*mutex_guard).clone()
+        };
+        node.maybe_change_head(remote_head.clone(), remote_hashgraph).unwrap();
+        let new_head = node.head.lock().unwrap().unwrap().clone();
+        let mutex_guard = node.hashgraph.lock().unwrap();
+        let hashgraph = mutex_guard.borrow();
+        let head_event = hashgraph.get(&new_head).unwrap();
+        assert_eq!(head_event.parents(), &Some(Parents(head.clone(), remote_head.clone())));
+    }
+
+    #[test]
+    #[should_panic(expected = "EventNotFound")]
+    fn it_shouldnt_create_a_head() {
+        let mut node = create_node();
+        let remote_node = create_node();
+        let remote_hashgraph = {
+            let mutex_guard = remote_node.hashgraph.lock().unwrap();
+            (*mutex_guard).clone()
+        };
+        use ring::digest::{digest, SHA256};
+        let real_hash = EventHash(digest(&SHA256, &vec![1]));
+        node.maybe_change_head(real_hash.clone(), remote_hashgraph).unwrap();
+    }
+
+    #[test]
+    fn it_should_merge_the_hashgraph() {
+        let mut node = create_node();
+        let remote_node = create_node();
+        let head = node.head.lock().unwrap().unwrap().clone();
+        let remote_head = remote_node.head.lock().unwrap().unwrap().clone();
+        let remote_hashgraph = {
+            let mutex_guard = remote_node.hashgraph.lock().unwrap();
+            (*mutex_guard).clone()
+        };
+        node.merge_hashgraph(remote_hashgraph).unwrap();
+        let mutex_guard = node.hashgraph.lock().unwrap();
+        let hashgraph = mutex_guard.borrow();
+        assert!(hashgraph.contains_key(&head));
+        assert!(hashgraph.contains_key(&remote_head));
     }
 }
