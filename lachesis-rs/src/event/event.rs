@@ -10,7 +10,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Clone, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Parents(pub EventHash, pub EventHash);
 
 impl Parents {
@@ -21,7 +21,7 @@ impl Parents {
     }
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct Event {
     #[serde(skip)]
     can_see: HashMap<PeerId, EventHash>,
@@ -122,7 +122,7 @@ impl Event {
 
     #[inline]
     pub fn is_root(&self) -> bool {
-        self.parents.is_some()
+        self.parents.is_none()
     }
 
     #[inline]

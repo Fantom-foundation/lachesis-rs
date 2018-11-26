@@ -14,6 +14,7 @@ mod node;
 mod peer;
 mod round;
 
+pub use hashgraph::{BTreeHashgraph, Hashgraph};
 pub use event::Event;
 pub use node::Node;
 pub use peer::Peer;

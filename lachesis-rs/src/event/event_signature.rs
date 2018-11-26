@@ -3,6 +3,7 @@ use failure::Error;
 use peer::PeerId;
 use ring::signature::{ED25519, Signature, verify};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
+use std::fmt;
 
 #[derive(Clone)]
 pub struct EventSignature(pub Signature);
@@ -30,3 +31,16 @@ impl AsRef<[u8]> for EventSignature {
         self.0.as_ref()
     }
 }
+
+impl fmt::Debug for EventSignature {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.0.as_ref())
+    }
+}
+
+impl PartialEq for EventSignature {
+    fn eq(&self, other: &EventSignature) -> bool {
+        self.0.as_ref() == other.0.as_ref()
+    }
+}
+impl Eq for EventSignature {}
