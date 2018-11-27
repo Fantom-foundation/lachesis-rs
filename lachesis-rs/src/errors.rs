@@ -95,3 +95,24 @@ impl<T> From<PoisonError<T>> for ResourceNetworkPoisonError {
         ResourceNetworkPoisonError::new()
     }
 }
+
+#[derive(Debug, Fail)]
+#[fail(display = "Node internal state Mutex was poisoned")]
+pub struct ResourceNodeInternalStatePoisonError {
+    backtrace: Backtrace
+}
+
+impl ResourceNodeInternalStatePoisonError {
+    pub fn new() -> ResourceNodeInternalStatePoisonError {
+        ResourceNodeInternalStatePoisonError {
+            backtrace: Backtrace::new()
+        }
+    }
+}
+
+//for op-?, "auto" type conversion
+impl<T> From<PoisonError<T>> for ResourceNodeInternalStatePoisonError {
+    fn from(_: PoisonError<T>) -> Self {
+        ResourceNodeInternalStatePoisonError::new()
+    }
+}
