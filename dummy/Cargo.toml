@@ -1,0 +1,9 @@
+[package]
+name = "dummy"
+version = "0.1.0"
+authors = ["Agustin Chiappe Berrini <jnieve@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bincode = "1.0.1"
+lachesis-rs = { path = "../lachesis-rs" }

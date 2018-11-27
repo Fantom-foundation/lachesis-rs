@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "dummy",
     "lachesis-rs",
     "fal",
 ]

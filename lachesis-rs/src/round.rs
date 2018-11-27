@@ -35,9 +35,9 @@ mod tests {
     fn it_should_correctly_get_all_witnesses() {
         let mut round = Round::new(0);
         let digest1 = digest(&SHA256, b"42");
-        let event1 = EventHash(digest1);
+        let event1 = EventHash(digest1.as_ref().to_vec());
         let digest2 = digest(&SHA256, b"fish");
-        let event2 = EventHash(digest2);
+        let event2 = EventHash(digest2.as_ref().to_vec());
         round.add_witness(vec![1], event1.clone());
         round.add_witness(vec![0], event2.clone());
         let mut expected = vec![event1, event2];
