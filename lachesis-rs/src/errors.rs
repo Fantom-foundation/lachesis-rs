@@ -7,8 +7,6 @@ pub(crate) enum NodeError {
     EmptyNetwork,
     #[fail(display = "The node has no head")]
     NoHead,
-    #[fail(display = "Peer not found")]
-    PeerNotFound,
 }
 
 #[derive(Debug, Fail)]

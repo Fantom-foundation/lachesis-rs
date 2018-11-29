@@ -16,5 +16,5 @@ mod round;
 
 pub use hashgraph::{BTreeHashgraph, Hashgraph, HashgraphWire};
 pub use event::{Event, EventHash};
-pub use node::{Node, PeerMessage};
+pub use node::Node;
 pub use peer::{Peer, PeerId};

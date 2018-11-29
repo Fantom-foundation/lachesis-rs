@@ -2,15 +2,13 @@ use errors::HashgraphError;
 use event::{Event, EventHash, Parents};
 use failure::Error;
 use peer::PeerId;
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::repeat_with;
-use std::rc::Rc;
 
 #[derive(Deserialize, Serialize)]
 pub struct HashgraphWire(BTreeMap<EventHash, Event>);
 
-pub trait Hashgraph {
+pub trait Hashgraph: Send + Sync {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event, Error>;
     fn get(&self, id: &EventHash) -> Result<&Event, Error>;
     fn insert(&mut self, hash: EventHash, event: Event);
@@ -19,7 +17,7 @@ pub trait Hashgraph {
     fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
     fn higher(&self, a: &EventHash, b: &EventHash) -> bool;
     fn events_parents_can_see(&self, hash: &EventHash) -> Result<HashMap<PeerId, EventHash>, Error>;
-    fn difference(&self, g: Rc<RefCell<Hashgraph>>) -> Vec<EventHash>;
+    fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash>;
     fn is_valid_event(&self, event: &Event) -> Result<bool, Error>;
     fn contains_key(&self, id: &EventHash) -> bool;
     fn wire(&self) -> HashgraphWire;
@@ -140,10 +138,10 @@ impl Hashgraph for BTreeHashgraph {
         }
     }
 
-    fn difference(&self, g: Rc<RefCell<Hashgraph>>) -> Vec<EventHash> {
+    fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash> {
         self.0
             .keys()
-            .filter(|e| !g.borrow().contains_key(e))
+            .filter(|e| !g.contains_key(e))
             .map(|e| (*e).clone())
             .collect()
     }
@@ -172,9 +170,7 @@ impl Hashgraph for BTreeHashgraph {
 #[cfg(test)]
 mod tests {
     use event::{Event, EventHash, Parents};
-    use std::cell::RefCell;
     use std::collections::HashMap;
-    use std::rc::Rc;
     use super::{BTreeHashgraph, Hashgraph};
 
     #[test]
@@ -285,7 +281,7 @@ mod tests {
         hg2.insert(hash3.clone(), event3);
         let mut expected = vec![hash1.clone(), hash2.clone()];
         expected.sort();
-        let mut actual = hg1.difference(Rc::new(RefCell::new(hg2)));
+        let mut actual = hg1.difference(hg2);
         actual.sort();
         assert_eq!(expected, actual)
     }

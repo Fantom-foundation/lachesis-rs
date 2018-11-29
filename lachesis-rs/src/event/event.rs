@@ -5,18 +5,16 @@ use failure::Error;
 use hashgraph::Hashgraph;
 use peer::PeerId;
 use ring::digest::{digest, SHA256};
-use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parents(pub EventHash, pub EventHash);
 
 impl Parents {
-    pub fn max_round(&self, hg: Rc<RefCell<Hashgraph>>) -> Result<usize, Error> {
-        let other_round = hg.borrow().get(&self.1)?.round()?;
-        let self_round = hg.borrow().get(&self.0)?.round()?;
+    pub fn max_round<H: Hashgraph>(&self, hg: H) -> Result<usize, Error> {
+        let other_round = hg.get(&self.1)?.round()?;
+        let self_round = hg.get(&self.0)?.round()?;
         Ok(max(other_round, self_round))
     }
 }

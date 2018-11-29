@@ -1,18 +1,16 @@
 use errors::*;
 use event::{Event, EventHash, EventSignature, Parents};
 use failure::Error;
-use hashgraph::Hashgraph;
+use hashgraph::{Hashgraph, HashgraphWire};
 use peer::{Peer, PeerId};
 use rand::Rng;
 use rand::prelude::IteratorRandom;
 use ring::signature;
 use round::Round;
-use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::FromIterator;
-use std::rc::Rc;
-use std::sync::Mutex;
-use std::sync::mpsc::Receiver;
+use std::marker::PhantomData;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 macro_rules! get_from_mutex {
@@ -22,10 +20,6 @@ macro_rules! get_from_mutex {
 }
 
 const C: usize = 6;
-
-pub enum PeerMessage {
-    Sync(PeerId),
-}
 
 #[inline]
 fn get_current_timestamp() -> u64 {
@@ -43,62 +37,61 @@ fn get_round_pairs(r: &Round) -> Vec<(usize, EventHash)> {
     r.witnesses().iter().map(|w| (r.id, w.clone())).collect()
 }
 
-struct NodeInternalState {
+struct NodeInternalState<P: Peer<H>, H: Hashgraph> {
     consensus: BTreeSet<usize>,
+    network: HashMap<PeerId, Arc<Box<P>>>,
     pending_events: HashSet<EventHash>,
     rounds: Vec<Round>,
     super_majority: usize,
     votes: HashMap<(EventHash, EventHash), bool>,
+    _phantom: PhantomData<H>,
 }
 
-pub struct Node<P: Peer> {
-    hashgraph: Mutex<Rc<RefCell<Hashgraph>>>,
+pub struct Node<P: Peer<H>, H: Hashgraph + Clone> {
+    hashgraph: Mutex<H>,
     head: Mutex<Option<EventHash>>,
-    network: Mutex<HashMap<PeerId, Rc<Box<P>>>>,
     // TODO: Plain keys in memory? Not great. See https://stackoverflow.com/a/1263421 for possible
     // alternatives
     pk: signature::Ed25519KeyPair,
-    sync_channel: Receiver<PeerMessage>,
-    state: Mutex<NodeInternalState>,
+    state: Mutex<NodeInternalState<P, H>>,
 }
 
-impl<P: Peer> Node<P> {
+impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
     pub fn new(
         pk: signature::Ed25519KeyPair,
-        sync_channel: Receiver<PeerMessage>,
-        hashgraph: Rc<RefCell<Hashgraph>>
+        hashgraph: H
     ) -> Result<Self, Error> {
         let state = Mutex::new(NodeInternalState {
             consensus: BTreeSet::new(),
+            network: HashMap::new(),
             pending_events: HashSet::new(),
             rounds: Vec::new(),
             super_majority: 0,
             votes: HashMap::new(),
+            _phantom: PhantomData,
         });
         let node = Node {
             hashgraph: Mutex::new(hashgraph),
             head: Mutex::new(None),
-            network: Mutex::new(HashMap::new()),
             pk,
             state,
-            sync_channel,
         };
         node.create_new_head(None)?;
         Ok(node)
     }
 
     #[inline]
-    pub fn add_node(&self, peer: Rc<Box<P>>) -> Result<(), Error> {
+    pub fn add_node(&self, peer: Arc<Box<P>>) -> Result<(), Error> {
         let super_majority = {
-            let mut network = get_from_mutex!(self.network, ResourceNetworkPoisonError)?;
-            network.insert(peer.id().clone(), peer);
-            network.len() * 2 /3
+            let mut state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
+            state.network.insert(peer.id().clone(), peer);
+            state.network.len() * 2 /3
         };
         self.set_super_majority(super_majority)?;
         Ok(())
     }
 
-    pub fn sync(&self, remote_head: EventHash, remote_hg: Rc<RefCell<Hashgraph>>)
+    pub fn sync(&self, remote_head: EventHash, remote_hg: H)
         -> Result<Vec<EventHash>, Error> {
         let res = self.merge_hashgraph(remote_hg.clone())?;
 
@@ -122,7 +115,6 @@ impl<P: Peer> Node<P> {
     pub fn decide_fame(&self) -> Result<BTreeSet<usize>, Error> {
         let mut famous_events = HashMap::new();
         let mut rounds_done = BTreeSet::new();
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let super_majority = self.get_super_majority()?;
         for (round, veh) in self.get_voters()?.into_iter() {
             let witnesses = self.get_round_witnesses(round, &veh)?;
@@ -142,8 +134,8 @@ impl<P: Peer> Node<P> {
                         if stake > super_majority {
                             self.vote(veh.clone(), eh, vote)?;
                         } else {
-                            let new_vote =
-                                    mutex_guard.borrow().get(&veh)?.signature()?.as_ref()[0] != 0;
+                            let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
+                            let new_vote = hashgraph.get(&veh)?.signature()?.as_ref()[0] != 0;
                             self.vote(veh.clone(), eh, new_vote)?;
                         }
                     }
@@ -151,8 +143,8 @@ impl<P: Peer> Node<P> {
             }
         }
 
+        let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         for (e, vote) in famous_events.into_iter() {
-            let mut hashgraph = mutex_guard.borrow_mut();
             let ev = hashgraph.get_mut(&e)?;
             ev.famous(vote);
         }
@@ -194,21 +186,18 @@ impl<P: Peer> Node<P> {
         Ok(())
     }
 
-    pub fn start_responding_messages(&self) -> Result<(), Error> {
-        match self.sync_channel.recv()? {
-            PeerMessage::Sync(peer_id) => {
-                let network = get_from_mutex!(self.network, ResourceNetworkPoisonError)?;
-                let head = self.get_head()?;
-                let hashgraph = self.get_hashgraph()?;
-                let wire = hashgraph.borrow().wire();
-                let peer = network.get(&peer_id).ok_or(Error::from(NodeError::PeerNotFound))?;
-                peer.send_sync((head, wire));
-            },
-        };
-        Ok(())
+    pub fn respond_message(&self) -> Result<(EventHash, HashgraphWire), Error> {
+        let head = self.get_head()?;
+        let hashgraph = self.get_hashgraph()?;
+        let wire = hashgraph.wire();
+        Ok((head, wire))
     }
 
-    pub fn get_hashgraph(&self) -> Result<Rc<RefCell<Hashgraph>>, Error> {
+    pub fn get_id(&self) -> PeerId {
+        self.pk.public_key_bytes().to_vec()
+    }
+
+    pub fn get_hashgraph(&self) -> Result<H, Error> {
         let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         Ok(hashgraph.clone())
     }
@@ -218,6 +207,12 @@ impl<P: Peer> Node<P> {
             .clone()
             .map(|v| v.clone())
             .ok_or(Error::from(NodeError::NoHead))
+    }
+
+    #[inline]
+    pub fn get_stats(&self) -> Result<(usize, usize), Error> {
+        let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
+        Ok((state.rounds.len(), state.pending_events.len()))
     }
 
     #[inline]
@@ -242,8 +237,7 @@ impl<P: Peer> Node<P> {
 
     #[inline]
     fn maybe_add_witness_to_round(&self, round: usize, eh: &EventHash) -> Result<(), Error>{
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let event = hashgraph.get(&eh)?;
         if round == 0 || round > hashgraph.get(&event.self_parent()?)?.round()? {
             let creator = event.creator().clone();
@@ -271,9 +265,9 @@ impl<P: Peer> Node<P> {
     #[inline]
     fn is_round_received(&self, unique_famous_witnesses: &HashSet<EventHash>, eh: &EventHash)
         -> Result<bool, Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         Ok(unique_famous_witnesses.iter()
-            .all(|ufwh| mutex_guard.borrow().ancestors(ufwh).contains(&eh)))
+            .all(|ufwh| hashgraph.ancestors(ufwh).contains(&eh)))
     }
 
     #[inline]
@@ -284,13 +278,12 @@ impl<P: Peer> Node<P> {
         unique_famous_witnesses: &HashSet<EventHash>
     ) -> Result<(), Error> {
         let timestamp_deciders = self.get_timestamp_deciders(hash, unique_famous_witnesses)?;
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
+        let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let times = timestamp_deciders.into_iter()
-            .map(|eh| mutex_guard.borrow().get(&eh).unwrap().timestamp().unwrap())
+            .map(|eh| hashgraph.get(&eh).unwrap().timestamp().unwrap())
             .collect::<Vec<u64>>();
         let times_sum: u64 = times.iter().sum();
         let new_time = times_sum / times.len() as u64;
-        let mut hashgraph = mutex_guard.borrow_mut();
         let event = hashgraph.get_mut(hash)?;
         event.set_timestamp(new_time);
         event.set_round_received(round);
@@ -304,8 +297,7 @@ impl<P: Peer> Node<P> {
         unique_famous_witnesses: &HashSet<EventHash>
     ) -> Result<HashSet<EventHash>, Error> {
         let mut result = HashSet::new();
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         for unique_famous_witness in unique_famous_witnesses {
             let self_ancestors = hashgraph.self_ancestors(unique_famous_witness).into_iter();
             for self_ancestor in self_ancestors {
@@ -322,8 +314,7 @@ impl<P: Peer> Node<P> {
     #[inline]
     fn get_unique_famous_witnesses(&self, round: usize) -> Result<HashSet<EventHash>, Error> {
         let mut famous_witnesses = self.get_famous_witnesses(round)?;
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         for w in famous_witnesses.clone() {
             for w1 in famous_witnesses.clone() {
                 if w != w1 {
@@ -340,8 +331,7 @@ impl<P: Peer> Node<P> {
 
     #[inline]
     fn get_famous_witnesses(&self, round: usize) -> Result<HashSet<EventHash>, Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
         Ok(HashSet::from_iter(
             state.rounds[round].witnesses().into_iter()
@@ -351,8 +341,7 @@ impl<P: Peer> Node<P> {
 
     #[inline]
     fn are_all_witnesses_famous(&self, round: usize) -> Result<bool, Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
         Ok(state.rounds[round].witnesses().iter()
             .map(|eh| hashgraph.get(eh).unwrap())
@@ -388,8 +377,7 @@ impl<P: Peer> Node<P> {
     #[inline]
     fn get_undetermined_events(&self, round: usize) -> Result<Vec<(usize, EventHash)>, Error> {
         let next_consensus = self.get_next_consensus()?;
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
         Ok((next_consensus..round)
             .filter(|r| !state.consensus.contains(r))
@@ -405,9 +393,25 @@ impl<P: Peer> Node<P> {
         round: usize,
         hash: &EventHash
     ) -> Result<HashSet<EventHash>, Error> {
+        let hits = self.get_round_hits(round, hash)?;
+        let prev_round = round - 1;
+        let super_majority = self.get_super_majority()?;
+        let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
+        let r = &state.rounds[prev_round];
+        let map_iter = hits.into_iter()
+            .filter(|(_,v)| *v > super_majority)
+            .map(|(c, _)| r.witnesses_map()[&c].clone());
+        Ok(HashSet::from_iter(map_iter))
+    }
+
+    #[inline]
+    fn get_round_hits(
+        &self,
+        round: usize,
+        hash: &EventHash
+    ) -> Result<HashMap<PeerId, usize>, Error> {
         let mut hits: HashMap<PeerId, usize> = HashMap::new();
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let event = hashgraph.get(hash)?;
         let prev_round = round - 1;
         for (creator, event_hash) in event.can_see().iter() {
@@ -422,20 +426,15 @@ impl<P: Peer> Node<P> {
                 }
             }
         }
-        let super_majority = self.get_super_majority()?;
-        let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
-        let r = &state.rounds[prev_round];
-        let map_iter = hits.into_iter()
-            .filter(|(_,v)| *v > super_majority)
-            .map(|(c, _)| r.witnesses_map()[&c].clone());
-        Ok(HashSet::from_iter(map_iter))
+        Ok(hits)
     }
 
     #[inline]
     fn get_voters(&self) -> Result<Vec<(usize, EventHash)>, Error> {
         let next_consensus = self.get_next_consensus()?;
         let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
-        Ok(state.rounds[next_consensus..state.rounds.len()].iter()
+        let max_r = state.rounds.iter().map(|r| r.id).max().unwrap_or(0);
+        Ok(state.rounds[next_consensus..max_r].iter()
             .flat_map(|r| get_round_pairs(r))
             .collect())
     }
@@ -451,8 +450,7 @@ impl<P: Peer> Node<P> {
 
     #[inline]
     fn set_event_can_see_self(&self, hash: &EventHash) -> Result<(), Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let mut hashgraph = mutex_guard.borrow_mut();
+        let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let event = hashgraph.get_mut(&hash)?;
         let creator = event.creator().clone();
         event.add_can_see(creator, hash.clone());
@@ -462,13 +460,11 @@ impl<P: Peer> Node<P> {
     #[inline]
     fn assign_round(&self, hash: &EventHash) -> Result<usize, Error> {
         let is_root = {
-            let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-            let hashgraph = mutex_guard.borrow();
+            let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
             hashgraph.get(hash)?.is_root()
         };
         if is_root {
-            let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-            let mut hashgraph = mutex_guard.borrow_mut();
+            let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
             assign_root_round(hashgraph.get_mut(&hash)?)
         } else {
             self.assign_non_root_round(hash)
@@ -478,8 +474,7 @@ impl<P: Peer> Node<P> {
     #[inline]
     fn assign_non_root_round(&self, hash: &EventHash) -> Result<usize, Error> {
         let events_parents_can_see =  {
-            let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-            let hashgraph = mutex_guard.borrow();
+            let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
             hashgraph.events_parents_can_see(hash)?
         };
         let mut r = self.get_parents_round(hash)?;
@@ -500,8 +495,7 @@ impl<P: Peer> Node<P> {
     fn get_hits_per_events(
         &self, r: usize, events_parents_can_see: &HashMap<PeerId, EventHash>
     ) -> Result<HashMap<PeerId, usize>, Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let mut hits: HashMap<PeerId, usize> = HashMap::new();
         for (_, h) in events_parents_can_see.iter() {
             let event = hashgraph.get(h)?;
@@ -520,11 +514,10 @@ impl<P: Peer> Node<P> {
 
     #[inline]
     fn get_parents_round(&self, hash: &EventHash) -> Result<usize, Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let event = hashgraph.get(hash)?;
         let parents = event.parents().clone().ok_or(Error::from(EventError::NoParents))?;
-        parents.max_round((*mutex_guard).clone())
+        parents.max_round(hashgraph.clone())
     }
 
     #[inline]
@@ -533,36 +526,33 @@ impl<P: Peer> Node<P> {
         hash: &EventHash,
         events_parents_can_see: HashMap<Vec<u8>, EventHash>
     ) -> Result<(), Error> {
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let mut hashgraph = mutex_guard.borrow_mut();
+        let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let event = hashgraph.get_mut(hash)?;
         event.set_can_see(events_parents_can_see);
         Ok(())
     }
 
     #[inline]
-    fn merge_hashgraph(&self, remote_hg: Rc<RefCell<Hashgraph>>) -> Result<Vec<EventHash>, Error> {
+    fn merge_hashgraph(&self, remote_hg: H) -> Result<Vec<EventHash>, Error> {
         let diff = {
             let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-            remote_hg.borrow().difference(hashgraph.clone())
+            remote_hg.difference(hashgraph.clone())
         };
         for eh in diff.clone().into_iter() {
             let is_valid_event = {
-                let rhg = remote_hg.borrow();
-                let event = rhg.get(&eh)?;
+                let event = remote_hg.get(&eh)?;
                 self.is_valid_event(&eh, event)
             }?;
             if is_valid_event {
-                let mut rhg = remote_hg.borrow_mut();
-                self.add_event(rhg.get(&eh)?.clone())?;
+                self.add_event(remote_hg.get(&eh)?.clone())?;
             }
         }
         Ok(diff)
     }
 
     #[inline]
-    fn maybe_change_head(&self, remote_head: EventHash, remote_hg: Rc<RefCell<Hashgraph>>) -> Result<(), Error> {
-        let remote_head_event = remote_hg.borrow().get(&remote_head).unwrap().clone();
+    fn maybe_change_head(&self, remote_head: EventHash, remote_hg: H) -> Result<(), Error> {
+        let remote_head_event = remote_hg.get(&remote_head).unwrap().clone();
 
         if self.is_valid_event(&remote_head, &remote_head_event)? {
             let current_head = self.get_head()?;
@@ -580,16 +570,16 @@ impl<P: Peer> Node<P> {
                 if !b {
                     Ok(false)
                 } else {
-                    let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-                    let hashgraph = mutex_guard.borrow();
+                    let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
                     hashgraph.is_valid_event(event)
                 }
             })
     }
 
     #[inline]
-    fn select_peer<R: Rng>(&self, rng: &mut R) -> Result<Rc<Box<P>>, Error> {
-        self.network.lock().unwrap()
+    fn select_peer<R: Rng>(&self, rng: &mut R) -> Result<Arc<Box<P>>, Error> {
+        let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
+        state.network
             .values()
             .choose(rng)
             .ok_or(Error::from(NodeError::EmptyNetwork))
@@ -618,8 +608,7 @@ impl<P: Peer> Node<P> {
     fn add_event(&self, e: Event) -> Result<(), Error> {
         let hash = e.hash()?;
         self.add_pending_event(hash.clone())?;
-        let mutex_guard = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let mut hashgraph = mutex_guard.borrow_mut();
+        let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         Ok(hashgraph.insert(hash, e))
     }
 
@@ -638,26 +627,23 @@ mod tests {
     use peer::{Peer, PeerId};
     use ring::{rand, signature};
     use ring::digest::{digest, SHA256};
-    use std::cell::RefCell;
     use std::collections::HashSet;
     use std::iter::FromIterator;
-    use std::rc::Rc;
-    use std::sync::mpsc::channel;
+    use std::sync::Arc;
     use super::Node;
 
-    fn create_node() -> Node<DummyPeer> {
+    fn create_node() -> Node<DummyPeer, BTreeHashgraph> {
         let rng = rand::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-        let (_, receiver) = channel();
         let hashgraph = BTreeHashgraph::new();
-        Node::new(kp, receiver, Rc::new(RefCell::new(hashgraph))).unwrap()
+        Node::new(kp, hashgraph).unwrap()
     }
 
-    fn create_useless_peer(id: PeerId) -> Rc<Box<DummyPeer>> {
+    fn create_useless_peer(id: PeerId) -> Arc<Box<DummyPeer>> {
         let digest = digest(&SHA256, b"42");
         let event = EventHash(digest.as_ref().to_vec());
-        Rc::new(Box::new(DummyPeer {
+        Arc::new(Box::new(DummyPeer {
             hashgraph: BTreeHashgraph::new(),
             head: event,
             id,
@@ -671,11 +657,10 @@ mod tests {
         id: PeerId,
     }
 
-    impl Peer for DummyPeer {
-        fn get_sync(&self, _pk: PeerId) -> (EventHash, Rc<RefCell<Hashgraph>>) {
-            (self.head.clone(), Rc::new(RefCell::new(self.hashgraph.clone())))
+    impl Peer<BTreeHashgraph> for DummyPeer {
+        fn get_sync(&self, _pk: PeerId) -> (EventHash, BTreeHashgraph) {
+            (self.head.clone(), self.hashgraph.clone())
         }
-        fn send_sync(&self, _msg: (EventHash, HashgraphWire)) {}
         fn id(&self) -> &PeerId {
             &self.id
         }
@@ -708,8 +693,7 @@ mod tests {
         node.add_event(event.clone()).unwrap();
         let state = node.state.lock().unwrap();
         assert_eq!(state.pending_events, HashSet::from_iter(vec![head, hash.clone()].into_iter()));
-        let mutex_guard = node.hashgraph.lock().unwrap();
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = node.hashgraph.lock().unwrap();
         assert!(hashgraph.contains_key(&hash));
         assert_eq!(hashgraph.get(&hash).unwrap(), &event);
     }
@@ -721,8 +705,7 @@ mod tests {
         node.create_new_head(Some(Parents(prev_head.clone(), prev_head.clone()))).unwrap();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         assert_ne!(head, prev_head);
-        let mutex_guard = node.hashgraph.lock().unwrap();
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = node.hashgraph.lock().unwrap();
         let head_event = hashgraph.get(&head).unwrap();
         assert!(head_event.is_valid(&head).unwrap());
         assert_eq!(head_event.parents(), &Some(Parents(prev_head.clone(), prev_head.clone())));
@@ -733,8 +716,7 @@ mod tests {
         let node = create_node();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         let event = {
-            let mutex_guard = node.hashgraph.lock().unwrap();
-            let hashgraph = mutex_guard.borrow();
+            let hashgraph = node.hashgraph.lock().unwrap();
             hashgraph.get(&head).unwrap().clone()
         };
         assert!(node.is_valid_event(&head, &event).unwrap());
@@ -745,8 +727,7 @@ mod tests {
         let node = create_node();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         let event = {
-            let mutex_guard = node.hashgraph.lock().unwrap();
-            let hashgraph = mutex_guard.borrow();
+            let hashgraph = node.hashgraph.lock().unwrap();
             hashgraph.get(&head).unwrap().clone()
         };
         use ring::digest::{digest, SHA256};
@@ -778,8 +759,7 @@ mod tests {
         };
         node.maybe_change_head(remote_head.clone(), remote_hashgraph).unwrap();
         let new_head = node.head.lock().unwrap().clone().unwrap().clone();
-        let mutex_guard = node.hashgraph.lock().unwrap();
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = node.hashgraph.lock().unwrap();
         let head_event = hashgraph.get(&new_head).unwrap();
         assert_eq!(head_event.parents(), &Some(Parents(head.clone(), remote_head.clone())));
     }
@@ -809,8 +789,7 @@ mod tests {
             (*mutex_guard).clone()
         };
         node.merge_hashgraph(remote_hashgraph).unwrap();
-        let mutex_guard = node.hashgraph.lock().unwrap();
-        let hashgraph = mutex_guard.borrow();
+        let hashgraph = node.hashgraph.lock().unwrap();
         assert!(hashgraph.contains_key(&head));
         assert!(hashgraph.contains_key(&remote_head));
     }

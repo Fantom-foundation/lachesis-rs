@@ -1,28 +1,36 @@
-use bincode::{deserialize, serialize};
-use lachesis_rs::{BTreeHashgraph, EventHash, Hashgraph, HashgraphWire, Node, Peer, PeerId, PeerMessage};
-use std::cell::RefCell;
-use std::sync::mpsc::{Sender, Receiver};
-use std::rc::Rc;
+use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId};
+use ring::rand::SystemRandom;
+use ring::signature;
 
-struct DummyNode {
-    id: PeerId,
-    node: Node<DummyNode>,
-    msg_sender: Sender<PeerMessage>,
-    internal_channel: (Sender<Vec<u8>>, Receiver<Vec<u8>>),
+
+fn create_node(rng: &mut SystemRandom) -> Node<DummyNode, BTreeHashgraph> {
+    let hashgraph = BTreeHashgraph::new();
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng).unwrap();
+    let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
+    Node::new(kp, hashgraph).unwrap()
 }
 
-impl Peer for DummyNode {
-    fn get_sync(&self, _pk: PeerId) -> (EventHash, Rc<RefCell<Hashgraph>>) {
-        self.msg_sender.send(PeerMessage::Sync(self.id.clone()));
-        let payload = self.internal_channel.1.recv().unwrap();
-        let (eh, wire): (EventHash, HashgraphWire) = deserialize(&payload).unwrap();
-        let hashgraph = BTreeHashgraph::from(wire);
-        (eh, Rc::new(RefCell::new(hashgraph)))
-    }
+pub struct DummyNode {
+    id: PeerId,
+    pub node: Node<DummyNode, BTreeHashgraph>,
+}
 
-    fn send_sync(&self, msg: (EventHash, HashgraphWire)) {
-        let payload = serialize(&msg).unwrap();
-        self.internal_channel.0.send(payload).unwrap();
+impl DummyNode {
+    pub fn new(rng: &mut SystemRandom) -> DummyNode {
+        let node = create_node(rng);
+        let id = node.get_id();
+        DummyNode {
+            id,
+            node,
+        }
+    }
+}
+
+impl Peer<BTreeHashgraph> for DummyNode {
+    fn get_sync(&self, _pk: PeerId) -> (EventHash, BTreeHashgraph) {
+        let (eh, wire): (EventHash, HashgraphWire) = self.node.respond_message().unwrap();
+        let hashgraph = BTreeHashgraph::from(wire);
+        (eh, hashgraph)
     }
     fn id(&self) -> &PeerId {
         &self.id
