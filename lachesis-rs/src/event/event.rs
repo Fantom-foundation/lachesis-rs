@@ -10,7 +10,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parents(pub EventHash, pub EventHash);
 
 impl Parents {
@@ -21,7 +21,7 @@ impl Parents {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Event {
     #[serde(skip)]
     can_see: HashMap<PeerId, EventHash>,
@@ -75,7 +75,7 @@ impl Event {
     #[inline]
     pub fn is_self_parent(&self, hash: &EventHash) -> bool {
         match self.parents {
-            Some(Parents(self_parent, _)) => self_parent == *hash,
+            Some(Parents(ref self_parent, _)) => self_parent == hash,
             None => false,
         }
     }
@@ -157,7 +157,7 @@ impl Event {
             self.creator.clone()
         );
         let bytes = serialize(&value)?;
-        Ok(EventHash(digest(&SHA256, bytes.as_ref())))
+        Ok(EventHash(digest(&SHA256, bytes.as_ref()).as_ref().to_vec()))
     }
     
     pub fn is_valid(&self, hash: &EventHash) -> Result<bool, Error> {
@@ -174,7 +174,7 @@ proptest! {
         use event::EventHash;
         use ring::digest::{digest, SHA256};
         let event = Event::new(Vec::new(), None, Vec::new());
-        let hash = EventHash(digest(&SHA256, hash.as_bytes()));
+        let hash = EventHash(digest(&SHA256, hash.as_bytes()).as_ref().to_vec());
         assert!(!event.is_self_parent(&hash))
     }
 
@@ -182,10 +182,10 @@ proptest! {
     fn it_should_report_correctly_self_parent(self_parent_hash in ".*", try in ".*") {
         use event::EventHash;
         use ring::digest::{digest, SHA256};
-        let self_parent = EventHash(digest(&SHA256, self_parent_hash.as_bytes()));
-        let other_parent = EventHash(digest(&SHA256, b"fish"));
-        let event = Event::new(Vec::new(), Some(Parents(self_parent, other_parent)), Vec::new());
-        let hash = EventHash(digest(&SHA256, try.as_bytes()));
+        let self_parent = EventHash(digest(&SHA256, self_parent_hash.as_bytes()).as_ref().to_vec());
+        let other_parent = EventHash(digest(&SHA256, b"fish").as_ref().to_vec());
+        let event = Event::new(Vec::new(), Some(Parents(self_parent.clone(), other_parent)), Vec::new());
+        let hash = EventHash(digest(&SHA256, try.as_bytes()).as_ref().to_vec());
         assert!(event.is_self_parent(&self_parent));
         assert_eq!(self_parent_hash == try, event.is_self_parent(&hash))
     }
@@ -206,10 +206,10 @@ proptest! {
     fn it_should_have_different_hashes_on_different_self_parents(tx1 in ".*", tx2 in ".*") {
         use event::EventHash;
         use ring::digest::{digest, SHA256};
-        let other_parent = EventHash(digest(&SHA256, b"42"));
-        let self_parent1 = EventHash(digest(&SHA256, tx1.as_bytes()));
-        let self_parent2 = EventHash(digest(&SHA256, tx2.as_bytes()));
-        let self_parent3 = EventHash(digest(&SHA256, tx2.as_bytes()));
+        let other_parent = EventHash(digest(&SHA256, b"42").as_ref().to_vec());
+        let self_parent1 = EventHash(digest(&SHA256, tx1.as_bytes()).as_ref().to_vec());
+        let self_parent2 = EventHash(digest(&SHA256, tx2.as_bytes()).as_ref().to_vec());
+        let self_parent3 = EventHash(digest(&SHA256, tx2.as_bytes()).as_ref().to_vec());
         let event1 = Event::new(vec![], Some(Parents(self_parent1, other_parent.clone())), Vec::new());
         let event2 = Event::new(vec![], Some(Parents(self_parent2, other_parent.clone())), Vec::new());
         let event3 = Event::new(vec![], Some(Parents(self_parent3, other_parent.clone())), Vec::new());
@@ -224,10 +224,10 @@ proptest! {
     fn it_should_have_different_hashes_on_different_other_parents(tx1 in ".*", tx2 in ".*") {
         use event::EventHash;
         use ring::digest::{digest, SHA256};
-        let self_parent = EventHash(digest(&SHA256, b"42"));
-        let other_parent1 = EventHash(digest(&SHA256, tx1.as_bytes()));
-        let other_parent2 = EventHash(digest(&SHA256, tx2.as_bytes()));
-        let other_parent3 = EventHash(digest(&SHA256, tx2.as_bytes()));
+        let self_parent = EventHash(digest(&SHA256, b"42").as_ref().to_vec());
+        let other_parent1 = EventHash(digest(&SHA256, tx1.as_bytes()).as_ref().to_vec());
+        let other_parent2 = EventHash(digest(&SHA256, tx2.as_bytes()).as_ref().to_vec());
+        let other_parent3 = EventHash(digest(&SHA256, tx2.as_bytes()).as_ref().to_vec());
         let event1 = Event::new(vec![], Some(Parents(self_parent.clone(), other_parent1)), Vec::new());
         let event2 = Event::new(vec![], Some(Parents(self_parent.clone(), other_parent2)), Vec::new());
         let event3 = Event::new(vec![], Some(Parents(self_parent.clone(), other_parent3)), Vec::new());
@@ -280,7 +280,7 @@ mod tests {
         let mut event = Event::new(vec![], None, kp.public_key_bytes().to_vec());
         let hash = event.hash().unwrap();
         let sign = kp.sign(hash.as_ref());
-        let event_signature = EventSignature(sign);
+        let event_signature = EventSignature(sign.as_ref().to_vec());
         event.sign(event_signature);
         assert!(event.is_valid(&hash).unwrap());
     }
@@ -293,8 +293,8 @@ mod tests {
         let mut event = Event::new(vec![], None, kp.public_key_bytes().to_vec());
         let hash = event.hash().unwrap();
         let sign = kp.sign(hash.as_ref());
-        let event_signature = EventSignature(sign);
-        let wrong_hash = EventHash(digest(&SHA256, b"42"));
+        let event_signature = EventSignature(sign.as_ref().to_vec());
+        let wrong_hash = EventHash(digest(&SHA256, b"42").as_ref().to_vec());
         event.sign(event_signature);
         assert!(!event.is_valid(&wrong_hash).unwrap());
     }
@@ -308,7 +308,7 @@ mod tests {
         let mut event = Event::new(vec![], None, vec![]);
         let hash = event.hash().unwrap();
         let sign = kp.sign(hash.as_ref());
-        let event_signature = EventSignature(sign);
+        let event_signature = EventSignature(sign.as_ref().to_vec());
         event.sign(event_signature);
         assert!(!event.is_valid(&hash).unwrap());
     }

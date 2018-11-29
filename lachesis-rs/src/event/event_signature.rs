@@ -1,12 +1,10 @@
 use event::Event;
 use failure::Error;
 use peer::PeerId;
-use ring::signature::{ED25519, Signature, verify};
-use serde::ser::{Serialize, SerializeStruct, Serializer};
-use std::fmt;
+use ring::signature::{ED25519, verify};
 
-#[derive(Clone)]
-pub struct EventSignature(pub Signature);
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EventSignature(pub Vec<u8>);
 
 impl EventSignature {
     pub fn verify(&self, event: &Event, peer: &PeerId) -> Result<(), Error> {
@@ -18,29 +16,8 @@ impl EventSignature {
     }
 }
 
-impl Serialize for EventSignature {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        let mut s = serializer.serialize_struct("EventId", 1)?;
-        s.serialize_field("data", self.0.as_ref())?;
-        s.end()
-    }
-}
-
 impl AsRef<[u8]> for EventSignature {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
-
-impl fmt::Debug for EventSignature {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.0.as_ref())
-    }
-}
-
-impl PartialEq for EventSignature {
-    fn eq(&self, other: &EventSignature) -> bool {
-        self.0.as_ref() == other.0.as_ref()
-    }
-}
-impl Eq for EventSignature {}

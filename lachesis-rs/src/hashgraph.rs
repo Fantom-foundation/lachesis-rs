@@ -7,6 +7,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::repeat_with;
 use std::rc::Rc;
 
+#[derive(Deserialize, Serialize)]
+pub struct HashgraphWire(BTreeMap<EventHash, Event>);
+
 pub trait Hashgraph {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event, Error>;
     fn get(&self, id: &EventHash) -> Result<&Event, Error>;
@@ -19,6 +22,7 @@ pub trait Hashgraph {
     fn difference(&self, g: Rc<RefCell<Hashgraph>>) -> Vec<EventHash>;
     fn is_valid_event(&self, event: &Event) -> Result<bool, Error>;
     fn contains_key(&self, id: &EventHash) -> bool;
+    fn wire(&self) -> HashgraphWire;
 }
 
 #[derive(Clone)]
@@ -28,7 +32,12 @@ impl BTreeHashgraph {
     pub fn new() -> BTreeHashgraph {
         BTreeHashgraph(BTreeMap::new())
     }
+}
 
+impl From<HashgraphWire> for BTreeHashgraph {
+    fn from(v: HashgraphWire) -> Self {
+        BTreeHashgraph(v.0)
+    }
 }
 
 impl Hashgraph for BTreeHashgraph {
@@ -154,6 +163,10 @@ impl Hashgraph for BTreeHashgraph {
     fn contains_key(&self, id: &EventHash) -> bool {
         self.0.contains_key(id)
     }
+
+    fn wire(&self) -> HashgraphWire {
+        HashgraphWire(self.0.clone())
+    }
 }
 
 #[cfg(test)]
@@ -182,7 +195,7 @@ mod tests {
         let other_parent = Event::new(vec![], None, n2);
         let sphash = self_parent.hash().unwrap();
         let ophash = other_parent.hash().unwrap();
-        let event = Event::new(vec![], Some(Parents(sphash, ophash)), n1);
+        let event = Event::new(vec![], Some(Parents(sphash.clone(), ophash.clone())), n1);
         let hash = event.hash().unwrap();
         hashgraph.insert(ophash.clone(), other_parent);
         hashgraph.insert(sphash.clone(), self_parent);
@@ -200,7 +213,7 @@ mod tests {
         let other_parent = Event::new(vec![], None, n2);
         let sphash = self_parent.hash().unwrap();
         let ophash = other_parent.hash().unwrap();
-        let event = Event::new(vec![], Some(Parents(sphash, ophash)), n3);
+        let event = Event::new(vec![], Some(Parents(sphash.clone(), ophash.clone())), n3);
         let hash = event.hash().unwrap();
         hashgraph.insert(ophash.clone(), other_parent);
         hashgraph.insert(sphash.clone(), self_parent);
@@ -217,7 +230,7 @@ mod tests {
         let other_parent = Event::new(vec![], None, n2.clone());
         let sphash = self_parent.hash().unwrap();
         let ophash = other_parent.hash().unwrap();
-        let event = Event::new(vec![], Some(Parents(sphash, ophash)), n2.clone());
+        let event = Event::new(vec![], Some(Parents(sphash.clone(), ophash.clone())), n2.clone());
         let hash = event.hash().unwrap();
         hashgraph.insert(ophash.clone(), other_parent);
         hashgraph.insert(sphash.clone(), self_parent);
@@ -234,7 +247,7 @@ mod tests {
         let other_parent = Event::new(vec![], None, n2.clone());
         let sphash = self_parent.hash().unwrap();
         let ophash = other_parent.hash().unwrap();
-        let event = Event::new(vec![], Some(Parents(sphash, ophash)), n2.clone());
+        let event = Event::new(vec![], Some(Parents(sphash.clone(), ophash.clone())), n2.clone());
         let hash = event.hash().unwrap();
         hashgraph.insert(ophash.clone(), other_parent);
         hashgraph.insert(hash.clone(), event.clone());
@@ -250,7 +263,7 @@ mod tests {
         let other_parent = Event::new(vec![], None, n2.clone());
         let sphash = self_parent.hash().unwrap();
         let ophash = other_parent.hash().unwrap();
-        let event = Event::new(vec![], Some(Parents(sphash, ophash)), n2.clone());
+        let event = Event::new(vec![], Some(Parents(sphash.clone(), ophash.clone())), n2.clone());
         let hash = event.hash().unwrap();
         hashgraph.insert(sphash.clone(), self_parent);
         hashgraph.insert(hash.clone(), event.clone());
