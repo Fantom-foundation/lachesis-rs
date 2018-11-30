@@ -1,4 +1,4 @@
-use errors::HashgraphError;
+use errors::{HashgraphError, HashgraphErrorType};
 use event::{Event, EventHash, Parents};
 use failure::Error;
 use peer::PeerId;
@@ -23,7 +23,7 @@ pub trait Hashgraph: Send + Sync {
     fn wire(&self) -> HashgraphWire;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BTreeHashgraph(BTreeMap<EventHash, Event>);
 
 impl BTreeHashgraph {
@@ -40,11 +40,11 @@ impl From<HashgraphWire> for BTreeHashgraph {
 
 impl Hashgraph for BTreeHashgraph {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event, Error> {
-        self.0.get_mut(id).ok_or(Error::from(HashgraphError::EventNotFound))
+        self.0.get_mut(id).ok_or(Error::from(HashgraphError::new(HashgraphErrorType::EventNotFound)))
     }
 
     fn get(&self, id: &EventHash) -> Result<&Event, Error> {
-        self.0.get(id).ok_or(Error::from(HashgraphError::EventNotFound))
+        self.0.get(id).ok_or(Error::from(HashgraphError::new(HashgraphErrorType::EventNotFound)))
     }
 
     fn insert(&mut self, hash: EventHash, event: Event) {

@@ -1,7 +1,9 @@
 #![feature(never_type)]
 
 extern crate bincode;
+extern crate env_logger;
 extern crate lachesis_rs;
+#[macro_use] extern crate log;
 extern crate ring;
 extern crate untrusted;
 
@@ -36,7 +38,7 @@ fn spawn_node(node: &Arc<Box<DummyNode>>) -> (thread::JoinHandle<!>, thread::Joi
             if counter % 100 == 0 {
                 let head = sync_thread_node.node.get_head().unwrap();
                 let (n_rounds, n_events) = sync_thread_node.node.get_stats().unwrap();
-                println!(
+                info!(
                     "Node {:?}: Head {:?} Rounds {:?} Pending events {:?}",
                     node_id,
                     head,
@@ -44,7 +46,10 @@ fn spawn_node(node: &Arc<Box<DummyNode>>) -> (thread::JoinHandle<!>, thread::Joi
                     n_events
                 );
             }
-            sync_thread_node.node.run(&mut rng).unwrap();
+            match sync_thread_node.node.run(&mut rng) {
+                Ok(_) => {},
+                Err(e) => panic!("Error! {}", e),
+            };
             counter += 1;
             thread::sleep(Duration::from_millis(100));
         }
@@ -53,6 +58,7 @@ fn spawn_node(node: &Arc<Box<DummyNode>>) -> (thread::JoinHandle<!>, thread::Joi
 }
 
 fn main() {
+    env_logger::init();
     let args: Vec<String> = args().collect();
     if args.len() != 2 {
         panic!(USAGE);

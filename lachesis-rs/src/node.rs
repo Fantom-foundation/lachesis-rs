@@ -8,6 +8,7 @@ use rand::prelude::IteratorRandom;
 use ring::signature;
 use round::Round;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fmt::Debug;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
@@ -47,7 +48,7 @@ struct NodeInternalState<P: Peer<H>, H: Hashgraph> {
     _phantom: PhantomData<H>,
 }
 
-pub struct Node<P: Peer<H>, H: Hashgraph + Clone> {
+pub struct Node<P: Peer<H>, H: Hashgraph + Clone + Debug> {
     hashgraph: Mutex<H>,
     head: Mutex<Option<EventHash>>,
     // TODO: Plain keys in memory? Not great. See https://stackoverflow.com/a/1263421 for possible
@@ -56,7 +57,7 @@ pub struct Node<P: Peer<H>, H: Hashgraph + Clone> {
     state: Mutex<NodeInternalState<P, H>>,
 }
 
-impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
+impl<P: Peer<H>, H: Hashgraph + Clone + Debug> Node<P, H> {
     pub fn new(
         pk: signature::Ed25519KeyPair,
         hashgraph: H
@@ -93,7 +94,9 @@ impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
 
     pub fn sync(&self, remote_head: EventHash, remote_hg: H)
         -> Result<Vec<EventHash>, Error> {
+        info!("Syncing with head {:?} and hashgraph {:?}", remote_head, remote_hg);
         let res = self.merge_hashgraph(remote_hg.clone())?;
+        info!("Merging {:?}", res);
 
         self.maybe_change_head(remote_head, remote_hg.clone())?;
         Ok(res)
@@ -102,6 +105,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
     pub fn divide_rounds(&self, events: Vec<EventHash>) -> Result<(), Error> {
         for eh in events.into_iter() {
             let round = self.assign_round(&eh)?;
+            info!("Round {} assigned to {:?}", round, eh);
 
             self.maybe_add_new_round(round)?;
 
@@ -152,6 +156,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
         let new_consensus: BTreeSet<usize> = BTreeSet::from_iter(
             rounds_done.into_iter().filter(|r| self.are_all_witnesses_famous(*r).unwrap())
         );
+        info!("New consensus rounds: {:?}", new_consensus);
 
         let mut state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
         state.consensus = BTreeSet::from_iter(state.consensus.union(&new_consensus).map(|r| r.clone()));
@@ -206,7 +211,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
         get_from_mutex!(self.head, ResourceHeadPoisonError)?
             .clone()
             .map(|v| v.clone())
-            .ok_or(Error::from(NodeError::NoHead))
+            .ok_or(Error::from(NodeError::new(NodeErrorType::NoHead)))
     }
 
     #[inline]
@@ -516,7 +521,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
     fn get_parents_round(&self, hash: &EventHash) -> Result<usize, Error> {
         let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let event = hashgraph.get(hash)?;
-        let parents = event.parents().clone().ok_or(Error::from(EventError::NoParents))?;
+        let parents = event.parents().clone().ok_or(Error::from(EventError::new(EventErrorType::NoParents)))?;
         parents.max_round(hashgraph.clone())
     }
 
@@ -582,7 +587,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone> Node<P, H> {
         state.network
             .values()
             .choose(rng)
-            .ok_or(Error::from(NodeError::EmptyNetwork))
+            .ok_or(Error::from(NodeError::new(NodeErrorType::EmptyNetwork)))
             .map(|p| p.clone())
     }
 

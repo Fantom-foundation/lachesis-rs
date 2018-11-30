@@ -1,34 +1,107 @@
 use failure::Backtrace;
+use std::fmt;
 use std::sync::PoisonError;
 
-#[derive(Debug, Fail)]
-pub(crate) enum NodeError {
-    #[fail(display = "The node network it's empty")]
+#[derive(Debug)]
+pub(crate) enum NodeErrorType {
     EmptyNetwork,
-    #[fail(display = "The node has no head")]
     NoHead,
 }
 
-#[derive(Debug, Fail)]
-pub(crate) enum EventError {
-    #[fail(display = "The event it's unsigned")]
-    UnsignedEvent,
-    #[fail(display = "The event round isn't set")]
-    RoundNotSet,
-    #[fail(display = "The event self parent isn't set")]
-    NoSelfParent,
-    #[fail(display = "The event parents aren't set")]
-    NoParents,
-    #[fail(display = "The event signature isn't set")]
-    NoSignature,
-    #[fail(display = "The event timestamp isn't set")]
-    NoTimestamp,
+impl fmt::Display for NodeErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = match self {
+            NodeErrorType::EmptyNetwork => "The node network it's empty",
+            NodeErrorType::NoHead => "The node has no head",
+        };
+        write!(f, "{}", msg)
+    }
 }
 
 #[derive(Debug, Fail)]
-pub(crate) enum HashgraphError {
-    #[fail(display = "Event not found in hashgraph")]
+#[fail(display = "Node failed with error: {}\nTraceback: {}", error_type, backtrace)]
+pub(crate) struct NodeError {
+    backtrace: Backtrace,
+    error_type: NodeErrorType,
+}
+
+impl NodeError {
+    pub(crate) fn new(error_type: NodeErrorType) -> NodeError {
+        NodeError {
+            backtrace: Backtrace::new(),
+            error_type,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum EventErrorType {
+    UnsignedEvent,
+    RoundNotSet,
+    NoSelfParent,
+    NoParents,
+    NoSignature,
+    NoTimestamp,
+}
+
+impl fmt::Display for EventErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = match self {
+            EventErrorType::UnsignedEvent => "The event it's unsigned",
+            EventErrorType::RoundNotSet => "The event round isn't set",
+            EventErrorType::NoSelfParent => "The event self parent isn't set",
+            EventErrorType::NoParents => "The event parents aren't set",
+            EventErrorType::NoSignature => "The event signature isn't set",
+            EventErrorType::NoTimestamp => "The event timestamp isn't set",
+        };
+        write!(f, "{}", msg)
+    }
+}
+
+#[derive(Debug, Fail)]
+#[fail(display = "Event failed with error: {}\nTraceback: {}", error_type, backtrace)]
+pub(crate) struct EventError {
+    backtrace: Backtrace,
+    error_type: EventErrorType,
+}
+
+impl EventError {
+    pub(crate) fn new(error_type: EventErrorType) -> EventError {
+        EventError {
+            backtrace: Backtrace::new(),
+            error_type,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum HashgraphErrorType {
     EventNotFound,
+}
+
+impl fmt::Display for HashgraphErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let msg = match self {
+            HashgraphErrorType::EventNotFound => "Event not found in hashgraph",
+        };
+        write!(f, "{}", msg)
+    }
+}
+
+#[derive(Debug, Fail)]
+#[fail(display = "Hashgraph failed with error: {}\nTraceback: {}", error_type, backtrace)]
+pub(crate) struct HashgraphError {
+    backtrace: Backtrace,
+    error_type: HashgraphErrorType,
+}
+
+impl HashgraphError {
+    pub(crate) fn new(error_type: HashgraphErrorType) -> HashgraphError {
+        HashgraphError {
+            backtrace: Backtrace::new(),
+            error_type,
+        }
+    }
 }
 
 #[derive(Debug, Fail)]

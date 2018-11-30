@@ -1,5 +1,5 @@
 use bincode::serialize;
-use errors::EventError;
+use errors::{EventError, EventErrorType};
 use event::{EventHash, EventSignature};
 use failure::Error;
 use hashgraph::Hashgraph;
@@ -62,7 +62,7 @@ impl Event {
 
     #[inline]
     pub fn timestamp(&self) -> Result<u64, Error> {
-        self.timestamp.clone().ok_or(Error::from(EventError::NoTimestamp))
+        self.timestamp.clone().ok_or(Error::from(EventError::new(EventErrorType::NoTimestamp)))
     }
 
     #[inline]
@@ -80,7 +80,7 @@ impl Event {
 
     #[inline]
     pub fn signature(&self) -> Result<EventSignature, Error> {
-        self.signature.clone().ok_or(Error::from(EventError::NoSignature))
+        self.signature.clone().ok_or(Error::from(EventError::new(EventErrorType::NoSignature)))
     }
 
     #[inline]
@@ -110,7 +110,7 @@ impl Event {
 
     #[inline]
     pub fn round(&self) -> Result<usize, Error> {
-        self.round.ok_or(Error::from(EventError::RoundNotSet))
+        self.round.ok_or(Error::from(EventError::new(EventErrorType::RoundNotSet)))
     }
 
     #[inline]
@@ -125,7 +125,7 @@ impl Event {
 
     #[inline]
     pub fn self_parent(&self) -> Result<EventHash, Error> {
-        self.parents.clone().map(|p| p.0).ok_or(Error::from(EventError::NoSelfParent))
+        self.parents.clone().map(|p| p.0).ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent)))
     }
 
     #[inline]
@@ -161,7 +161,7 @@ impl Event {
     pub fn is_valid(&self, hash: &EventHash) -> Result<bool, Error> {
         self.signature.clone()
             .map(|s| s.verify(&self, &self.creator))
-            .unwrap_or(Err(Error::from(EventError::UnsignedEvent)))?;
+            .unwrap_or(Err(Error::from(EventError::new(EventErrorType::UnsignedEvent))))?;
         Ok(hash.as_ref() == self.hash()?.as_ref())
     }
 }
