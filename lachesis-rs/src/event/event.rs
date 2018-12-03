@@ -1,22 +1,20 @@
 use bincode::serialize;
-use errors::EventError;
+use errors::{EventError, EventErrorType};
 use event::{EventHash, EventSignature};
 use failure::Error;
 use hashgraph::Hashgraph;
 use peer::PeerId;
 use ring::digest::{digest, SHA256};
-use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Parents(pub EventHash, pub EventHash);
 
 impl Parents {
-    pub fn max_round(&self, hg: Rc<RefCell<Hashgraph>>) -> Result<usize, Error> {
-        let other_round = hg.borrow().get(&self.1)?.round()?;
-        let self_round = hg.borrow().get(&self.0)?.round()?;
+    pub fn max_round<H: Hashgraph>(&self, hg: H) -> Result<usize, Error> {
+        let other_round = hg.get(&self.1)?.round()?;
+        let self_round = hg.get(&self.0)?.round()?;
         Ok(max(other_round, self_round))
     }
 }
@@ -64,7 +62,7 @@ impl Event {
 
     #[inline]
     pub fn timestamp(&self) -> Result<u64, Error> {
-        self.timestamp.clone().ok_or(Error::from(EventError::NoTimestamp))
+        self.timestamp.clone().ok_or(Error::from(EventError::new(EventErrorType::NoTimestamp)))
     }
 
     #[inline]
@@ -82,7 +80,7 @@ impl Event {
 
     #[inline]
     pub fn signature(&self) -> Result<EventSignature, Error> {
-        self.signature.clone().ok_or(Error::from(EventError::NoSignature))
+        self.signature.clone().ok_or(Error::from(EventError::new(EventErrorType::NoSignature)))
     }
 
     #[inline]
@@ -112,7 +110,7 @@ impl Event {
 
     #[inline]
     pub fn round(&self) -> Result<usize, Error> {
-        self.round.ok_or(Error::from(EventError::RoundNotSet))
+        self.round.ok_or(Error::from(EventError::new(EventErrorType::RoundNotSet)))
     }
 
     #[inline]
@@ -127,7 +125,7 @@ impl Event {
 
     #[inline]
     pub fn self_parent(&self) -> Result<EventHash, Error> {
-        self.parents.clone().map(|p| p.0).ok_or(Error::from(EventError::NoSelfParent))
+        self.parents.clone().map(|p| p.0).ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent)))
     }
 
     #[inline]
@@ -163,7 +161,7 @@ impl Event {
     pub fn is_valid(&self, hash: &EventHash) -> Result<bool, Error> {
         self.signature.clone()
             .map(|s| s.verify(&self, &self.creator))
-            .unwrap_or(Err(Error::from(EventError::UnsignedEvent)))?;
+            .unwrap_or(Err(Error::from(EventError::new(EventErrorType::UnsignedEvent))))?;
         Ok(hash.as_ref() == self.hash()?.as_ref())
     }
 }

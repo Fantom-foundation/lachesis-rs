@@ -1,12 +1,9 @@
 use event::EventHash;
-use hashgraph::{Hashgraph, HashgraphWire};
-use std::cell::RefCell;
-use std::rc::Rc;
+use hashgraph::Hashgraph;
 
 pub type PeerId = Vec<u8>;
 
-pub trait Peer {
-    fn get_sync(&self, pk: PeerId) -> (EventHash, Rc<RefCell<Hashgraph>>);
-    fn send_sync(&self, msg: (EventHash, HashgraphWire));
+pub trait Peer<H: Hashgraph>: Send + Sync {
+    fn get_sync(&self, pk: PeerId) -> (EventHash, H);
     fn id(&self) -> &PeerId;
 }

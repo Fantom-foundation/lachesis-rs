@@ -1,16 +1,14 @@
-use errors::HashgraphError;
+use errors::{HashgraphError, HashgraphErrorType};
 use event::{Event, EventHash, Parents};
 use failure::Error;
 use peer::PeerId;
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::repeat_with;
-use std::rc::Rc;
 
 #[derive(Deserialize, Serialize)]
 pub struct HashgraphWire(BTreeMap<EventHash, Event>);
 
-pub trait Hashgraph {
+pub trait Hashgraph: Send + Sync {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event, Error>;
     fn get(&self, id: &EventHash) -> Result<&Event, Error>;
     fn insert(&mut self, hash: EventHash, event: Event);
@@ -19,13 +17,15 @@ pub trait Hashgraph {
     fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
     fn higher(&self, a: &EventHash, b: &EventHash) -> bool;
     fn events_parents_can_see(&self, hash: &EventHash) -> Result<HashMap<PeerId, EventHash>, Error>;
-    fn difference(&self, g: Rc<RefCell<Hashgraph>>) -> Vec<EventHash>;
+    fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash>;
     fn is_valid_event(&self, event: &Event) -> Result<bool, Error>;
     fn contains_key(&self, id: &EventHash) -> bool;
     fn wire(&self) -> HashgraphWire;
+    fn find_roots(&self) -> Vec<EventHash>;
+    fn find_self_child(&self, eh: &EventHash) -> Option<EventHash>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BTreeHashgraph(BTreeMap<EventHash, Event>);
 
 impl BTreeHashgraph {
@@ -42,11 +42,11 @@ impl From<HashgraphWire> for BTreeHashgraph {
 
 impl Hashgraph for BTreeHashgraph {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event, Error> {
-        self.0.get_mut(id).ok_or(Error::from(HashgraphError::EventNotFound))
+        self.0.get_mut(id).ok_or(Error::from(HashgraphError::new(HashgraphErrorType::EventNotFound)))
     }
 
     fn get(&self, id: &EventHash) -> Result<&Event, Error> {
-        self.0.get(id).ok_or(Error::from(HashgraphError::EventNotFound))
+        self.0.get(id).ok_or(Error::from(HashgraphError::new(HashgraphErrorType::EventNotFound)))
     }
 
     fn insert(&mut self, hash: EventHash, event: Event) {
@@ -140,10 +140,10 @@ impl Hashgraph for BTreeHashgraph {
         }
     }
 
-    fn difference(&self, g: Rc<RefCell<Hashgraph>>) -> Vec<EventHash> {
+    fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash> {
         self.0
             .keys()
-            .filter(|e| !g.borrow().contains_key(e))
+            .filter(|e| !g.contains_key(e))
             .map(|e| (*e).clone())
             .collect()
     }
@@ -167,14 +167,31 @@ impl Hashgraph for BTreeHashgraph {
     fn wire(&self) -> HashgraphWire {
         HashgraphWire(self.0.clone())
     }
+
+    fn find_roots(&self) -> Vec<EventHash> {
+        self.0.values()
+            .filter(|e| e.is_root())
+            .map(|e| e.hash().unwrap())
+            .collect()
+    }
+
+    fn find_self_child(&self, eh: &EventHash) -> Option<EventHash> {
+        self.0.values()
+            .find(|e| {
+                let e = *e;
+                match e.parents() {
+                    Some(Parents(sp, _)) => sp == eh,
+                    None => false,
+                }
+            })
+            .map(|e| e.hash().unwrap())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use event::{Event, EventHash, Parents};
-    use std::cell::RefCell;
     use std::collections::HashMap;
-    use std::rc::Rc;
     use super::{BTreeHashgraph, Hashgraph};
 
     #[test]
@@ -285,7 +302,7 @@ mod tests {
         hg2.insert(hash3.clone(), event3);
         let mut expected = vec![hash1.clone(), hash2.clone()];
         expected.sort();
-        let mut actual = hg1.difference(Rc::new(RefCell::new(hg2)));
+        let mut actual = hg1.difference(hg2);
         actual.sort();
         assert_eq!(expected, actual)
     }
