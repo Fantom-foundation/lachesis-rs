@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Agustin Chiappe Berrini <agustin@auvik.com>"]
 
 [dependencies]
+base64 = "0.10.0"
 bincode = "1.0.1"
 failure = "0.1.3"
 log = "0.4"

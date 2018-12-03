@@ -21,6 +21,8 @@ pub trait Hashgraph: Send + Sync {
     fn is_valid_event(&self, event: &Event) -> Result<bool, Error>;
     fn contains_key(&self, id: &EventHash) -> bool;
     fn wire(&self) -> HashgraphWire;
+    fn find_roots(&self) -> Vec<EventHash>;
+    fn find_self_child(&self, eh: &EventHash) -> Option<EventHash>;
 }
 
 #[derive(Clone, Debug)]
@@ -164,6 +166,25 @@ impl Hashgraph for BTreeHashgraph {
 
     fn wire(&self) -> HashgraphWire {
         HashgraphWire(self.0.clone())
+    }
+
+    fn find_roots(&self) -> Vec<EventHash> {
+        self.0.values()
+            .filter(|e| e.is_root())
+            .map(|e| e.hash().unwrap())
+            .collect()
+    }
+
+    fn find_self_child(&self, eh: &EventHash) -> Option<EventHash> {
+        self.0.values()
+            .find(|e| {
+                let e = *e;
+                match e.parents() {
+                    Some(Parents(sp, _)) => sp == eh,
+                    None => false,
+                }
+            })
+            .map(|e| e.hash().unwrap())
     }
 }
 
