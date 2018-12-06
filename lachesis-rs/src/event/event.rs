@@ -62,7 +62,7 @@ impl Event {
 
     #[inline]
     pub fn timestamp(&self) -> Result<u64, Error> {
-        self.timestamp.clone().ok_or(Error::from(EventError::new(EventErrorType::NoTimestamp)))
+        self.timestamp.clone().ok_or(Error::from(EventError::new(EventErrorType::NoTimestamp { hash: self.hash()? })))
     }
 
     #[inline]
@@ -80,7 +80,7 @@ impl Event {
 
     #[inline]
     pub fn signature(&self) -> Result<EventSignature, Error> {
-        self.signature.clone().ok_or(Error::from(EventError::new(EventErrorType::NoSignature)))
+        self.signature.clone().ok_or(Error::from(EventError::new(EventErrorType::NoSignature { hash: self.hash()? })))
     }
 
     #[inline]
@@ -110,7 +110,12 @@ impl Event {
 
     #[inline]
     pub fn round(&self) -> Result<usize, Error> {
-        self.round.ok_or(Error::from(EventError::new(EventErrorType::RoundNotSet)))
+        self.round.ok_or(Error::from(EventError::new(EventErrorType::RoundNotSet { hash: self.hash()? })))
+    }
+
+    #[inline]
+    pub fn maybe_round(&self) -> Option<usize> {
+        self.round.clone()
     }
 
     #[inline]
@@ -125,7 +130,7 @@ impl Event {
 
     #[inline]
     pub fn self_parent(&self) -> Result<EventHash, Error> {
-        self.parents.clone().map(|p| p.0).ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent)))
+        self.parents.clone().map(|p| p.0).ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent { hash: self.hash()? })))
     }
 
     #[inline]
@@ -161,7 +166,7 @@ impl Event {
     pub fn is_valid(&self, hash: &EventHash) -> Result<bool, Error> {
         self.signature.clone()
             .map(|s| s.verify(&self, &self.creator))
-            .unwrap_or(Err(Error::from(EventError::new(EventErrorType::UnsignedEvent))))?;
+            .unwrap_or(Err(Error::from(EventError::new(EventErrorType::UnsignedEvent { hash: self.hash()? }))))?;
         Ok(hash.as_ref() == self.hash()?.as_ref())
     }
 }
