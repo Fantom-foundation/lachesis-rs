@@ -207,7 +207,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
             pk,
             state,
         };
-        node.create_new_head(None)?;
+        node.create_new_head(None, Some(0))?;
         Ok(node)
     }
 
@@ -231,7 +231,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
             remote_hg
         );
         debug!("{:?}", self);
-        let res = self.merge_hashgraph(remote_hg.clone())?;
+        let mut res = self.merge_hashgraph(remote_hg.clone())?;
         info!(
             "[Node {:?}] Merging {:?}",
             self.get_id().printable_hash(),
@@ -239,7 +239,8 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
         );
         debug!("{:?}", self);
 
-        self.maybe_change_head(remote_head, remote_hg.clone())?;
+        let new_head = self.maybe_change_head(remote_head, remote_hg.clone())?;
+        res.extend(new_head.into_iter());
         Ok(res)
     }
 
@@ -719,15 +720,20 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
     }
 
     #[inline]
-    fn maybe_change_head(&self, remote_head: EventHash, remote_hg: H) -> Result<(), Error> {
+    fn maybe_change_head(
+        &self,
+        remote_head: EventHash,
+        remote_hg: H
+    ) -> Result<Option<EventHash>, Error> {
         let remote_head_event = remote_hg.get(&remote_head).unwrap().clone();
 
         if self.is_valid_event(&remote_head, &remote_head_event)? {
             let current_head = self.get_head()?;
             let parents = Parents(current_head, remote_head);
-            self.create_new_head(Some(parents))?;
+            Ok(Some(self.create_new_head(Some(parents), None)?))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
     #[inline]
@@ -754,7 +760,11 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
             .map(|p| p.clone())
     }
 
-    fn create_new_head(&self, parents: Option<Parents>) -> Result<(), Error> {
+    fn create_new_head(
+        &self,
+        parents: Option<Parents>,
+        round: Option<usize>
+    ) -> Result<EventHash, Error> {
         let mut event = Event::new(
             Vec::new(),
             parents,
@@ -763,13 +773,14 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
         if event.is_root() {
             event.set_timestamp(get_current_timestamp())
         }
+        round.iter().for_each(|r| event.set_round(r.clone()));
         let hash = event.hash()?;
         let signature = self.pk.sign(hash.as_ref());
         event.sign(EventSignature(signature.as_ref().to_vec()));
         self.add_event(event)?;
         let mut current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
-        *current_head = Some(hash);
-        Ok(())
+        *current_head = Some(hash.clone());
+        Ok(hash.clone())
     }
 
     #[inline]
@@ -870,7 +881,7 @@ mod tests {
     fn it_should_create_a_new_head() {
         let node = create_node();
         let prev_head = node.head.lock().unwrap().clone().unwrap().clone();
-        node.create_new_head(Some(Parents(prev_head.clone(), prev_head.clone()))).unwrap();
+        node.create_new_head(Some(Parents(prev_head.clone(), prev_head.clone())), None).unwrap();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         assert_ne!(head, prev_head);
         let hashgraph = node.hashgraph.lock().unwrap();
