@@ -553,15 +553,19 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
         round: usize,
         hash: &EventHash
     ) -> Result<HashSet<EventHash>, Error> {
-        let hits = self.get_round_hits(round, hash)?;
-        let prev_round = round - 1;
-        let super_majority = self.get_super_majority()?;
-        let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
-        let r = &state.rounds[prev_round];
-        let map_iter = hits.into_iter()
-            .filter(|(_,v)| *v > super_majority)
-            .map(|(c, _)| r.witnesses_map()[&c].clone());
-        Ok(HashSet::from_iter(map_iter))
+        if round == 0 {
+            Ok(HashSet::new())
+        } else {
+            let hits = self.get_round_hits(round, hash)?;
+            let prev_round = round - 1;
+            let super_majority = self.get_super_majority()?;
+            let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
+            let r = &state.rounds[prev_round];
+            let map_iter = hits.into_iter()
+                .filter(|(_,v)| *v > super_majority)
+                .map(|(c, _)| r.witnesses_map()[&c].clone());
+            Ok(HashSet::from_iter(map_iter))
+        }
     }
 
     #[inline]
@@ -570,23 +574,27 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
         round: usize,
         hash: &EventHash
     ) -> Result<HashMap<PeerId, usize>, Error> {
-        let mut hits: HashMap<PeerId, usize> = HashMap::new();
-        let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        let event = hashgraph.get(hash)?;
-        let prev_round = round - 1;
-        for (creator, event_hash) in event.can_see().iter() {
-            let possible_witness = hashgraph.get(event_hash)?;
-            if possible_witness.round()? == prev_round {
-                for (_creator, _event_hash) in possible_witness.can_see().iter() {
-                    let r = hashgraph.get(_event_hash)?.round()?;
-                    if r == prev_round {
-                        let new_val = hits.get(creator).map(|v| *v+1).unwrap_or(1);
-                        hits.insert(creator.clone(), new_val);
+        if round == 0 {
+            Ok(HashMap::new())
+        } else {
+            let mut hits: HashMap<PeerId, usize> = HashMap::new();
+            let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
+            let event = hashgraph.get(hash)?;
+            let prev_round = round - 1;
+            for (creator, event_hash) in event.can_see().iter() {
+                let possible_witness = hashgraph.get(event_hash)?;
+                if possible_witness.round()? == prev_round {
+                    for (_creator, _event_hash) in possible_witness.can_see().iter() {
+                        let r = hashgraph.get(_event_hash)?.round()?;
+                        if r == prev_round {
+                            let new_val = hits.get(creator).map(|v| *v+1).unwrap_or(1);
+                            hits.insert(creator.clone(), new_val);
+                        }
                     }
                 }
             }
+            Ok(hits)
         }
-        Ok(hits)
     }
 
     #[inline]
