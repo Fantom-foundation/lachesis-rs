@@ -8,6 +8,7 @@ use rand::Rng;
 use rand::prelude::IteratorRandom;
 use ring::signature;
 use round::Round;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::iter::FromIterator;
@@ -225,10 +226,9 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
     pub fn sync(&self, remote_head: EventHash, remote_hg: H)
         -> Result<Vec<EventHash>, Error> {
         info!(
-            "[Node {:?}] Syncing with head {:?} and hashgraph {:?}",
+            "[Node {:?}] Syncing with head {:?}",
             self.get_id().printable_hash(),
-            remote_head.printable_hash(),
-            remote_hg
+            remote_head.printable_hash()
         );
         debug!("{:?}", self);
         let mut res = self.merge_hashgraph(remote_hg.clone())?;
@@ -239,8 +239,10 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
         );
         debug!("{:?}", self);
 
-        let new_head = self.maybe_change_head(remote_head, remote_hg.clone())?;
-        res.extend(new_head.into_iter());
+        if res.len() > 0 {
+            let new_head = self.maybe_change_head(remote_head, remote_hg.clone())?;
+            res.extend(new_head.into_iter());
+        }
         Ok(res)
     }
 
@@ -703,10 +705,21 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
 
     #[inline]
     fn merge_hashgraph(&self, remote_hg: H) -> Result<Vec<EventHash>, Error> {
-        let diff = {
+        let mut diff = {
             let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
             remote_hg.difference(hashgraph.clone())
         };
+        diff.sort_by(|h1, h2| {
+            let h1_higher = remote_hg.higher(h1, h2);
+            let h2_higher = remote_hg.higher(h2, h1);
+            if h1_higher {
+                Ordering::Greater
+            } else if h2_higher {
+                Ordering::Less
+            } else {
+                Ordering::Equal
+            }
+        });
         let mut res = Vec::with_capacity(diff.len());
         for eh in diff.clone().into_iter() {
             let is_valid_event = {
