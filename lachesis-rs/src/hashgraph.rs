@@ -104,10 +104,10 @@ impl Hashgraph for BTreeHashgraph {
     #[inline]
     fn higher(&self, a: &EventHash, b: &EventHash) -> bool {
         let a_self_ancestors = self.self_ancestors(a);
-        let b_self_ancestors = self.self_ancestors(b);
         if a_self_ancestors.contains(&b) {
             return true
         }
+        let b_self_ancestors = self.self_ancestors(b);
         if b_self_ancestors.contains(&a) {
             return false
         }

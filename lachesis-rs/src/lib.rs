@@ -14,6 +14,7 @@ mod event;
 mod hashgraph;
 mod node;
 mod peer;
+mod printable_hash;
 mod round;
 
 pub use hashgraph::{BTreeHashgraph, Hashgraph, HashgraphWire};

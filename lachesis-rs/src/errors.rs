@@ -1,3 +1,5 @@
+use event::EventHash;
+use printable_hash::PrintableHash;
 use failure::Backtrace;
 use std::fmt;
 use std::sync::PoisonError;
@@ -36,23 +38,29 @@ impl NodeError {
 
 #[derive(Debug)]
 pub(crate) enum EventErrorType {
-    UnsignedEvent,
-    RoundNotSet,
-    NoSelfParent,
-    NoParents,
-    NoSignature,
-    NoTimestamp,
+    UnsignedEvent { hash: EventHash },
+    RoundNotSet { hash: EventHash },
+    NoSelfParent { hash: EventHash },
+    NoParents { hash: EventHash },
+    NoSignature { hash: EventHash },
+    NoTimestamp { hash: EventHash },
 }
 
 impl fmt::Display for EventErrorType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match self {
-            EventErrorType::UnsignedEvent => "The event it's unsigned",
-            EventErrorType::RoundNotSet => "The event round isn't set",
-            EventErrorType::NoSelfParent => "The event self parent isn't set",
-            EventErrorType::NoParents => "The event parents aren't set",
-            EventErrorType::NoSignature => "The event signature isn't set",
-            EventErrorType::NoTimestamp => "The event timestamp isn't set",
+            EventErrorType::UnsignedEvent { hash } =>
+                format!("The event {} it's unsigned", hash.printable_hash()),
+            EventErrorType::RoundNotSet { hash } => 
+                format!("The event {} round isn't set", hash.printable_hash()),
+            EventErrorType::NoSelfParent { hash } => 
+                format!("The event {} self parent isn't set", hash.printable_hash()),
+            EventErrorType::NoParents { hash } => 
+                format!("The event {} parents aren't set", hash.printable_hash()),
+            EventErrorType::NoSignature { hash } => 
+                format!("The event {} signature isn't set", hash.printable_hash()),
+            EventErrorType::NoTimestamp { hash } => 
+                format!("The event {} timestamp isn't set", hash.printable_hash()),
         };
         write!(f, "{}", msg)
     }
