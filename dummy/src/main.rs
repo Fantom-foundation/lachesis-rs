@@ -1,6 +1,5 @@
 #![feature(never_type)]
 
-extern crate bincode;
 extern crate env_logger;
 extern crate lachesis_rs;
 #[macro_use] extern crate log;

@@ -361,6 +361,15 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node<P, H> {
             .ok_or(Error::from(NodeError::new(NodeErrorType::NoHead)))
     }
 
+    pub fn get_peer(&self, id: &PeerId) -> Result<Arc<Box<P>>, Error> {
+        let state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
+        state
+            .network
+            .get(id)
+            .map(|v| v.clone())
+            .ok_or(Error::from(NodeError::new(NodeErrorType::PeerNotFound(id.clone()))))
+    }
+
     #[inline]
     fn update_famous_events(&self, famous_events: HashMap<EventHash, bool>) -> Result<(), Error> {
         let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;

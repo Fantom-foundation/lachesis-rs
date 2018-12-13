@@ -1,4 +1,5 @@
 use event::EventHash;
+use peer::PeerId;
 use printable_hash::PrintableHash;
 use failure::Backtrace;
 use std::fmt;
@@ -6,6 +7,7 @@ use std::sync::PoisonError;
 
 #[derive(Debug)]
 pub(crate) enum NodeErrorType {
+    PeerNotFound(PeerId),
     EmptyNetwork,
     NoHead,
 }
@@ -13,8 +15,9 @@ pub(crate) enum NodeErrorType {
 impl fmt::Display for NodeErrorType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match self {
-            NodeErrorType::EmptyNetwork => "The node network it's empty",
-            NodeErrorType::NoHead => "The node has no head",
+            NodeErrorType::EmptyNetwork => String::from("The node network it's empty"),
+            NodeErrorType::NoHead => String::from("The node has no head"),
+            NodeErrorType::PeerNotFound(p) => format!("Peer {} not found", p.printable_hash()),
         };
         write!(f, "{}", msg)
     }
