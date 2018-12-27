@@ -1,6 +1,6 @@
 #[macro_use] extern crate log;
 use bincode::serialize;
-use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId};
+use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Swirlds, Peer, PeerId};
 use ring::rand::SystemRandom;
 use ring::signature;
 use std::io::{Read, Write};
@@ -9,17 +9,17 @@ use std::sync::Arc;
 use std::thread::{JoinHandle, sleep, spawn};
 use std::time::Duration;
 
-fn create_node(rng: &mut SystemRandom) -> Node<TcpNode, BTreeHashgraph> {
+fn create_node(rng: &mut SystemRandom) -> Swirlds<TcpNode, BTreeHashgraph> {
     let hashgraph = BTreeHashgraph::new();
     let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng).unwrap();
     let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-    Node::new(kp, hashgraph).unwrap()
+    Swirlds::new(kp, hashgraph).unwrap()
 }
 
 pub struct TcpNode {
     id: PeerId,
     pub access_address: String,
-    pub node: Node<TcpNode, BTreeHashgraph>,
+    pub node: Swirlds<TcpNode, BTreeHashgraph>,
 }
 
 impl TcpNode {
@@ -94,8 +94,7 @@ impl TcpApp {
                 };
                 counter += 1;
                 sleep(Duration::from_millis(100));
-            }
-            ()
+            };
         });
         (answer_handle, sync_handle)
     }

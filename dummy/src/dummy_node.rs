@@ -1,18 +1,17 @@
-use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId};
+use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Swirlds, Peer, PeerId};
 use ring::rand::SystemRandom;
 use ring::signature;
 
-
-fn create_node(rng: &mut SystemRandom) -> Node<DummyNode, BTreeHashgraph> {
+fn create_node(rng: &mut SystemRandom) -> Swirlds<DummyNode, BTreeHashgraph> {
     let hashgraph = BTreeHashgraph::new();
     let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng).unwrap();
     let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-    Node::new(kp, hashgraph).unwrap()
+    Swirlds::new(kp, hashgraph).unwrap()
 }
 
 pub struct DummyNode {
     id: PeerId,
-    pub node: Node<DummyNode, BTreeHashgraph>,
+    pub node: Swirlds<DummyNode, BTreeHashgraph>,
 }
 
 impl DummyNode {
