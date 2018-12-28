@@ -7,6 +7,7 @@ extern crate ring;
 extern crate untrusted;
 
 mod dummy_node;
+use lachesis_rs::Node;
 use rand;
 use self::dummy_node::DummyNode;
 use std::env::args;
