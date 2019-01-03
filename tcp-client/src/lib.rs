@@ -35,7 +35,7 @@ impl TcpNode {
 }
 
 impl Peer<BTreeHashgraph> for TcpNode {
-    fn get_sync(&self, pk: PeerId) -> (EventHash, BTreeHashgraph) {
+    fn get_sync(&self, pk: PeerId, _k: Option<&BTreeHashgraph>) -> (EventHash, BTreeHashgraph) {
         let peer = self.node.get_peer(&pk).unwrap();
         let mut buffer = Vec::new();
         let mut stream = TcpStream::connect(&peer.access_address).unwrap();
