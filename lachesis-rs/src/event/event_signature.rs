@@ -1,13 +1,14 @@
-use event::Event;
+use event::{Event, Parents};
 use failure::Error;
 use peer::PeerId;
 use ring::signature::{ED25519, verify};
+use serde::Serialize;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EventSignature(pub Vec<u8>);
 
 impl EventSignature {
-    pub fn verify(&self, event: &Event, peer: &PeerId) -> Result<(), Error> {
+    pub fn verify<P: Parents + Clone + Serialize>(&self, event: &Event<P>, peer: &PeerId) -> Result<(), Error> {
         let public_key = untrusted::Input::from(peer.as_ref());
         let hash = event.hash()?;
         let msg = untrusted::Input::from(hash.as_ref());

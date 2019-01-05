@@ -1,5 +1,5 @@
 use errors::*;
-use event::{Event, EventHash, EventSignature, Parents};
+use event::{Event, EventHash, EventSignature, ParentsPair};
 use failure::Error;
 use hashgraph::{Hashgraph, HashgraphWire};
 use node::Node;
@@ -17,12 +17,6 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-macro_rules! get_from_mutex {
-    ($resource: expr, $error: ident) => {
-        $resource.lock().map_err(|e| $error::from(e))
-    }
-}
-
 const C: usize = 6;
 
 #[inline]
@@ -31,7 +25,7 @@ fn get_current_timestamp() -> u64 {
 }
 
 #[inline]
-fn assign_round(event: &mut Event, round: usize) -> Result<usize, Error> {
+fn assign_round(event: &mut Event<ParentsPair>, round: usize) -> Result<usize, Error> {
     event.set_round(round);
     Ok(round)
 }
@@ -88,7 +82,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
             for peer in events.keys() {
                 if let Some(Some(ev)) = events.get(peer) {
                     let ev = h.get(ev).unwrap();
-                    if let Some(Parents(_, other_parent)) = ev.parents() {
+                    if let Some(ParentsPair(_, other_parent)) = ev.parents() {
                         write!(f, "{}  ", other_parent.printable_hash())?;
                     } else {
                         write!(f, "          ")?;
@@ -133,7 +127,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
         let mut last_event_per_peer: BTreeMap<PeerId, Option<EventHash>> = BTreeMap::new();
         for peer in network.keys() {
             for root in roots.iter() {
-                let e: &Event = hashgraph.get(root).unwrap();
+                let e: &Event<ParentsPair> = hashgraph.get(root).unwrap();
                 if e.creator() == peer {
                     last_event_per_peer.insert(peer.clone(), Some(root.clone()));
                 }
@@ -143,7 +137,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
             }
         }
         for root in roots.iter() {
-            let e: &Event = hashgraph.get(root).unwrap();
+            let e: &Event<ParentsPair> = hashgraph.get(root).unwrap();
             if e.creator() == &self.get_id() {
                 last_event_per_peer.insert(self.get_id().clone(), Some(root.clone()));
             }
@@ -741,7 +735,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
 
         if self.is_valid_event(&remote_head, &remote_head_event)? {
             let current_head = self.get_head()?;
-            let parents = Parents(current_head, remote_head);
+            let parents = ParentsPair(current_head, remote_head);
             Ok(Some(self.create_new_head(Some(parents), None)?))
         } else {
             Ok(None)
@@ -749,7 +743,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
     }
 
     #[inline]
-    fn is_valid_event(&self, event_hash: &EventHash, event: &Event) -> Result<bool, Error> {
+    fn is_valid_event(&self, event_hash: &EventHash, event: &Event<ParentsPair>) -> Result<bool, Error> {
         event
             .is_valid(event_hash)
             .and_then(|b| {
@@ -774,7 +768,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
 
     fn create_new_head(
         &self,
-        parents: Option<Parents>,
+        parents: Option<ParentsPair>,
         round: Option<usize>
     ) -> Result<EventHash, Error> {
         let mut event = Event::new(
@@ -796,7 +790,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
     }
 
     #[inline]
-    fn add_event(&self, e: Event) -> Result<(), Error> {
+    fn add_event(&self, e: Event<ParentsPair>) -> Result<(), Error> {
         let hash = e.hash()?;
         self.add_pending_event(hash.clone())?;
         let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
@@ -816,7 +810,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node for Swirlds<P, H> {
     fn run<R: Rng>(&self, rng: &mut R) -> Result<(), Error> {
         let (head, hg) = {
             let peer = self.select_peer(rng)?;
-            peer.get_sync(self.pk.public_key_bytes().to_vec())
+            peer.get_sync(self.pk.public_key_bytes().to_vec(), None)
         };
         let new_events = self.sync(head, hg)?;
         self.divide_rounds(new_events)?;
@@ -835,7 +829,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node for Swirlds<P, H> {
 
 #[cfg(test)]
 mod tests {
-    use event::{Event, EventHash, EventSignature, Parents};
+    use event::{Event, EventHash, EventSignature, ParentsPair};
     use hashgraph::*;
     use peer::{Peer, PeerId};
     use ring::{rand, signature};
@@ -871,7 +865,7 @@ mod tests {
     }
 
     impl Peer<BTreeHashgraph> for DummyPeer {
-        fn get_sync(&self, _pk: PeerId) -> (EventHash, BTreeHashgraph) {
+        fn get_sync(&self, _pk: PeerId, _h: Option<&BTreeHashgraph>) -> (EventHash, BTreeHashgraph) {
             (self.head.clone(), self.hashgraph.clone())
         }
         fn id(&self) -> &PeerId {
@@ -915,13 +909,13 @@ mod tests {
     fn it_should_create_a_new_head() {
         let node = create_node();
         let prev_head = node.head.lock().unwrap().clone().unwrap().clone();
-        node.create_new_head(Some(Parents(prev_head.clone(), prev_head.clone())), None).unwrap();
+        node.create_new_head(Some(ParentsPair(prev_head.clone(), prev_head.clone())), None).unwrap();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         assert_ne!(head, prev_head);
         let hashgraph = node.hashgraph.lock().unwrap();
         let head_event = hashgraph.get(&head).unwrap();
         assert!(head_event.is_valid(&head).unwrap());
-        assert_eq!(head_event.parents(), &Some(Parents(prev_head.clone(), prev_head.clone())));
+        assert_eq!(head_event.parents(), &Some(ParentsPair(prev_head.clone(), prev_head.clone())));
     }
 
     #[test]
@@ -952,7 +946,7 @@ mod tests {
     fn event_with_invalid_history_should_be_invalid_in_node() {
         let node = create_node();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
-        let mut event = Event::new(vec![], Some(Parents(head.clone(), head.clone())), node.pk.public_key_bytes().to_vec());
+        let mut event = Event::new(vec![], Some(ParentsPair(head.clone(), head.clone())), node.pk.public_key_bytes().to_vec());
         let hash = event.hash().unwrap();
         let signature = node.pk.sign(hash.as_ref()).as_ref().to_vec();
         event.sign(EventSignature(signature));
@@ -974,7 +968,7 @@ mod tests {
         let new_head = node.head.lock().unwrap().clone().unwrap().clone();
         let hashgraph = node.hashgraph.lock().unwrap();
         let head_event = hashgraph.get(&new_head).unwrap();
-        assert_eq!(head_event.parents(), &Some(Parents(head.clone(), remote_head.clone())));
+        assert_eq!(head_event.parents(), &Some(ParentsPair(head.clone(), remote_head.clone())));
     }
 
     #[test]

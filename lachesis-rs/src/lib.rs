@@ -9,9 +9,16 @@ extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate untrusted;
 
+macro_rules! get_from_mutex {
+    ($resource: expr, $error: ident) => {
+        $resource.lock().map_err(|e| $error::from(e))
+    }
+}
+
 mod errors;
 mod event;
 mod hashgraph;
+mod lachesis;
 mod node;
 mod peer;
 mod printable_hash;
