@@ -863,7 +863,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node for Swirlds<P, H> {
         Ok(())
     }
 
-    fn respond_message(&self) -> Result<(EventHash, HashgraphWire), Error> {
+    fn respond_message(&self, _k: Option<HashgraphWire>) -> Result<(EventHash, HashgraphWire), Error> {
         let head = self.get_head()?;
         let hashgraph = self.get_hashgraph()?;
         let wire = hashgraph.wire();

@@ -26,7 +26,7 @@ fn spawn_node(node: &Arc<Box<DummyNode>>) -> (thread::JoinHandle<!>, thread::Joi
     let answer_thread_node = node.clone();
     let sync_thread_node = node.clone();
     let answer_handler = thread::spawn(move || loop {
-        answer_thread_node.node.respond_message().unwrap();
+        answer_thread_node.node.respond_message(None).unwrap();
         thread::sleep(Duration::from_millis(100));
     });
     let sync_handle = thread::spawn(move || {

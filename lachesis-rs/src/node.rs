@@ -7,5 +7,5 @@ pub trait Node {
 
     fn run<R: Rng>(&self, rng: &mut R) -> Result<(), Error>;
 
-    fn respond_message(&self) -> Result<(EventHash, Self::D), Error>;
+    fn respond_message(&self, known: Option<Self::D>) -> Result<(EventHash, Self::D), Error>;
 }

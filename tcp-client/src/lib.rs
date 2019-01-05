@@ -67,7 +67,7 @@ impl TcpApp {
             let listener = TcpListener::bind(&answer_thread_node.access_address).unwrap();
             for stream_result in listener.incoming() {
                 let mut stream = stream_result.unwrap();
-                let message = answer_thread_node.node.respond_message().unwrap();
+                let message = answer_thread_node.node.respond_message(None).unwrap();
                 let payload = serialize(&message).unwrap();
                 stream.write(&payload).unwrap();
             }

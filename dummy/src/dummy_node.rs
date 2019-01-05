@@ -24,7 +24,7 @@ impl DummyNode {
 
 impl Peer<BTreeHashgraph> for DummyNode {
     fn get_sync(&self, _pk: PeerId, _h: Option<&BTreeHashgraph>) -> (EventHash, BTreeHashgraph) {
-        let (eh, wire): (EventHash, HashgraphWire) = self.node.respond_message().unwrap();
+        let (eh, wire): (EventHash, HashgraphWire) = self.node.respond_message(None).unwrap();
         let hashgraph = BTreeHashgraph::from(wire);
         (eh, hashgraph)
     }
