@@ -5,6 +5,12 @@ use failure::Backtrace;
 use std::fmt;
 use std::sync::PoisonError;
 
+#[derive(Debug, Fail)]
+pub enum ParentsError {
+    #[fail(display = "Parents are empty")]
+    EmptyParents,
+}
+
 #[derive(Debug)]
 pub(crate) enum NodeErrorType {
     PeerNotFound(PeerId),

@@ -1,8 +1,9 @@
-use event::{Event, EventHash, ParentsPair};
+use event::{Event, EventHash};
+use lachesis::parents_list::ParentsList;
 use std::collections::HashMap;
 
 pub struct Opera {
-    graph: HashMap<EventHash, Event<ParentsPair>>,
+    graph: HashMap<EventHash, Event<ParentsList>>,
 }
 
 impl Opera {
