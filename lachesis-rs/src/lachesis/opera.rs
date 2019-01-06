@@ -4,29 +4,42 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 
 pub struct Opera {
-    graph: HashMap<EventHash, Event<ParentsList>>,
+    graph: HashMap<EventHash, (usize, Event<ParentsList>)>,
+    pub lamport_timestamp: usize,
 }
 
 impl Opera {
     pub fn new() -> Opera {
         let graph = HashMap::new();
-        Opera { graph }
+        Opera {
+            graph,
+            lamport_timestamp: 0,
+        }
     }
 
     pub fn sync(&mut self, other: Opera) {
         for (eh, ev) in other.graph {
             self.graph.insert(eh, ev);
         }
+        if self.lamport_timestamp < other.lamport_timestamp {
+            self.lamport_timestamp = other.lamport_timestamp;
+        }
     }
 
     pub fn wire(&self) -> OperaWire {
         OperaWire {
             graph: BTreeMap::from_iter(self.graph.clone().into_iter()),
+            lamport_timestamp: self.lamport_timestamp,
         }
     }
 
     pub fn insert(&mut self, hash: EventHash, event: Event<ParentsList>) {
-        self.graph.insert(hash, event);
+        self.lamport_timestamp += 1;
+        self.graph.insert(hash, (self.lamport_timestamp, event));
+    }
+
+    pub fn set_lamport(&mut self, lamport_timestamp: usize) {
+        self.lamport_timestamp = lamport_timestamp;
     }
 
     pub fn diff(&self, wire: OperaWire) -> OperaWire {
@@ -39,10 +52,12 @@ impl Opera {
             .collect();
         OperaWire {
             graph: diff_keys,
+            lamport_timestamp: self.lamport_timestamp,
         }
     }
 }
 
 pub struct OperaWire {
-    graph: BTreeMap<EventHash, Event<ParentsList>>,
+    graph: BTreeMap<EventHash, (usize, Event<ParentsList>)>,
+    pub lamport_timestamp: usize,
 }

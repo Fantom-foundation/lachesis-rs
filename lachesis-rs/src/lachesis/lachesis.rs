@@ -71,10 +71,15 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
     }
 
     fn respond_message(&self, known: Option<OperaWire>) -> Result<(EventHash, OperaWire), Error> {
-        let opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
+        let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
         let head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         let resp = match known {
-            Some(remote) => opera.diff(remote),
+            Some(remote) => {
+                if remote.lamport_timestamp > opera.lamport_timestamp {
+                    opera.set_lamport(remote.lamport_timestamp);
+                }
+                opera.diff(remote)
+            },
             None => opera.wire(),
         };
         Ok((head.clone().unwrap(), resp))
