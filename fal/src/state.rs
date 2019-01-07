@@ -1,7 +1,3 @@
-pub trait State {
+pub trait State {}
 
-}
-
-pub trait Program {
-
-}
+pub trait Program {}

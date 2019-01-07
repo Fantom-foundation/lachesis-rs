@@ -1,5 +1,5 @@
 use crate::transaction::{Transaction, TransactionHash, TransactionStatus};
-use crate::transport::{Transport, Message, TransportError};
+use crate::transport::{Message, Transport, TransportError};
 
 pub trait Client<T: Transaction, U: Transport<W, X>, W: Message, X: TransportError> {
     fn submit_transaction(tx_hash: TransactionHash, tx: T) -> TransactionStatus;

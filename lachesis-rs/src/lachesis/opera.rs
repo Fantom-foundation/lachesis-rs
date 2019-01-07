@@ -9,9 +9,7 @@ pub struct Opera {
 impl Opera {
     pub fn new() -> Opera {
         let graph = HashMap::new();
-        Opera {
-            graph,
-        }
+        Opera { graph }
     }
 
     pub fn sync(&mut self, other: Opera) {

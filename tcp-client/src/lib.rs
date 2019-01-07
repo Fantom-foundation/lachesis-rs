@@ -1,12 +1,13 @@
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 use bincode::serialize;
-use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Swirlds, Peer, PeerId};
+use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId, Swirlds};
 use ring::rand::SystemRandom;
 use ring::signature;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
-use std::thread::{JoinHandle, sleep, spawn};
+use std::thread::{sleep, spawn, JoinHandle};
 use std::time::Duration;
 
 fn create_node(rng: &mut SystemRandom) -> Swirlds<TcpNode, BTreeHashgraph> {
@@ -82,19 +83,16 @@ impl TcpApp {
                     let (n_rounds, n_events) = sync_thread_node.node.get_stats().unwrap();
                     info!(
                         "Node {:?}: Head {:?} Rounds {:?} Pending events {:?}",
-                        node_id,
-                        head,
-                        n_rounds,
-                        n_events
+                        node_id, head, n_rounds, n_events
                     );
                 }
                 match sync_thread_node.node.run(&mut rng) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => panic!("Error! {}", e),
                 };
                 counter += 1;
                 sleep(Duration::from_millis(100));
-            };
+            }
         });
         (answer_handle, sync_handle)
     }

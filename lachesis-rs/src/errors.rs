@@ -1,7 +1,7 @@
 use event::EventHash;
+use failure::Backtrace;
 use peer::PeerId;
 use printable_hash::PrintableHash;
-use failure::Backtrace;
 use std::fmt;
 use std::sync::PoisonError;
 
@@ -30,7 +30,10 @@ impl fmt::Display for NodeErrorType {
 }
 
 #[derive(Debug, Fail)]
-#[fail(display = "Node failed with error: {}\nTraceback: {}", error_type, backtrace)]
+#[fail(
+    display = "Node failed with error: {}\nTraceback: {}",
+    error_type, backtrace
+)]
 pub(crate) struct NodeError {
     backtrace: Backtrace,
     error_type: NodeErrorType,
@@ -58,25 +61,34 @@ pub(crate) enum EventErrorType {
 impl fmt::Display for EventErrorType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match self {
-            EventErrorType::UnsignedEvent { hash } =>
-                format!("The event {} it's unsigned", hash.printable_hash()),
-            EventErrorType::RoundNotSet { hash } => 
-                format!("The event {} round isn't set", hash.printable_hash()),
-            EventErrorType::NoSelfParent { hash } => 
-                format!("The event {} self parent isn't set", hash.printable_hash()),
-            EventErrorType::NoParents { hash } => 
-                format!("The event {} parents aren't set", hash.printable_hash()),
-            EventErrorType::NoSignature { hash } => 
-                format!("The event {} signature isn't set", hash.printable_hash()),
-            EventErrorType::NoTimestamp { hash } => 
-                format!("The event {} timestamp isn't set", hash.printable_hash()),
+            EventErrorType::UnsignedEvent { hash } => {
+                format!("The event {} it's unsigned", hash.printable_hash())
+            }
+            EventErrorType::RoundNotSet { hash } => {
+                format!("The event {} round isn't set", hash.printable_hash())
+            }
+            EventErrorType::NoSelfParent { hash } => {
+                format!("The event {} self parent isn't set", hash.printable_hash())
+            }
+            EventErrorType::NoParents { hash } => {
+                format!("The event {} parents aren't set", hash.printable_hash())
+            }
+            EventErrorType::NoSignature { hash } => {
+                format!("The event {} signature isn't set", hash.printable_hash())
+            }
+            EventErrorType::NoTimestamp { hash } => {
+                format!("The event {} timestamp isn't set", hash.printable_hash())
+            }
         };
         write!(f, "{}", msg)
     }
 }
 
 #[derive(Debug, Fail)]
-#[fail(display = "Event failed with error: {}\nTraceback: {}", error_type, backtrace)]
+#[fail(
+    display = "Event failed with error: {}\nTraceback: {}",
+    error_type, backtrace
+)]
 pub(crate) struct EventError {
     backtrace: Backtrace,
     error_type: EventErrorType,
@@ -106,7 +118,10 @@ impl fmt::Display for HashgraphErrorType {
 }
 
 #[derive(Debug, Fail)]
-#[fail(display = "Hashgraph failed with error: {}\nTraceback: {}", error_type, backtrace)]
+#[fail(
+    display = "Hashgraph failed with error: {}\nTraceback: {}",
+    error_type, backtrace
+)]
 pub(crate) struct HashgraphError {
     backtrace: Backtrace,
     error_type: HashgraphErrorType,
@@ -124,13 +139,13 @@ impl HashgraphError {
 #[derive(Debug, Fail)]
 #[fail(display = "Hashgraph Mutex was poisoned")]
 pub struct ResourceHashgraphPoisonError {
-    backtrace: Backtrace
+    backtrace: Backtrace,
 }
 
 impl ResourceHashgraphPoisonError {
     pub fn new() -> ResourceHashgraphPoisonError {
         ResourceHashgraphPoisonError {
-            backtrace: Backtrace::new()
+            backtrace: Backtrace::new(),
         }
     }
 }
@@ -145,13 +160,13 @@ impl<T> From<PoisonError<T>> for ResourceHashgraphPoisonError {
 #[derive(Debug, Fail)]
 #[fail(display = "Head Mutex was poisoned")]
 pub struct ResourceHeadPoisonError {
-    backtrace: Backtrace
+    backtrace: Backtrace,
 }
 
 impl ResourceHeadPoisonError {
     pub fn new() -> ResourceHeadPoisonError {
         ResourceHeadPoisonError {
-            backtrace: Backtrace::new()
+            backtrace: Backtrace::new(),
         }
     }
 }
@@ -166,13 +181,13 @@ impl<T> From<PoisonError<T>> for ResourceHeadPoisonError {
 #[derive(Debug, Fail)]
 #[fail(display = "Network Mutex was poisoned")]
 pub struct ResourceNetworkPoisonError {
-    backtrace: Backtrace
+    backtrace: Backtrace,
 }
 
 impl ResourceNetworkPoisonError {
     pub fn new() -> ResourceNetworkPoisonError {
         ResourceNetworkPoisonError {
-            backtrace: Backtrace::new()
+            backtrace: Backtrace::new(),
         }
     }
 }
@@ -187,13 +202,13 @@ impl<T> From<PoisonError<T>> for ResourceNetworkPoisonError {
 #[derive(Debug, Fail)]
 #[fail(display = "Node internal state Mutex was poisoned")]
 pub struct ResourceNodeInternalStatePoisonError {
-    backtrace: Backtrace
+    backtrace: Backtrace,
 }
 
 impl ResourceNodeInternalStatePoisonError {
     pub fn new() -> ResourceNodeInternalStatePoisonError {
         ResourceNodeInternalStatePoisonError {
-            backtrace: Backtrace::new()
+            backtrace: Backtrace::new(),
         }
     }
 }
