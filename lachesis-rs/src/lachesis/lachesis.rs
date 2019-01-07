@@ -79,7 +79,7 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
                     opera.set_lamport(remote.lamport_timestamp);
                 }
                 opera.diff(remote)
-            },
+            }
             None => opera.wire(),
         };
         Ok((head.clone().unwrap(), resp))
