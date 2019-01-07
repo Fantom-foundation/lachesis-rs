@@ -4,12 +4,15 @@ use std::collections::HashMap;
 
 pub struct Round {
     pub id: usize,
-    witnesses: HashMap<PeerId, EventHash>
+    witnesses: HashMap<PeerId, EventHash>,
 }
 
 impl Round {
     pub fn new(id: usize) -> Round {
-        Round { id, witnesses: HashMap::new() }
+        Round {
+            id,
+            witnesses: HashMap::new(),
+        }
     }
 
     pub fn add_witness(&mut self, peer: PeerId, event: EventHash) {
@@ -27,9 +30,9 @@ impl Round {
 
 #[cfg(test)]
 mod tests {
+    use super::Round;
     use event::EventHash;
     use ring::digest::{digest, SHA256};
-    use super::Round;
 
     #[test]
     fn it_should_correctly_get_all_witnesses() {
@@ -46,5 +49,5 @@ mod tests {
         actual.sort();
         assert_eq!(round.id, 0);
         assert_eq!(expected, actual);
-   }
+    }
 }

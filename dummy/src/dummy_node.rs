@@ -1,4 +1,4 @@
-use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Swirlds, Peer, PeerId};
+use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId, Swirlds};
 use ring::rand::SystemRandom;
 use ring::signature;
 
@@ -18,10 +18,7 @@ impl DummyNode {
     pub fn new(rng: &mut SystemRandom) -> DummyNode {
         let node = create_node(rng);
         let id = node.get_id();
-        DummyNode {
-            id,
-            node,
-        }
+        DummyNode { id, node }
     }
 }
 

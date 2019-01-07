@@ -1,7 +1,7 @@
 use bincode::serialize;
 use errors::{EventError, EventErrorType};
-use event::{EventHash, EventSignature};
 use event::parents::Parents;
+use event::{EventHash, EventSignature};
 use failure::Error;
 use peer::PeerId;
 use ring::digest::{digest, SHA256};
@@ -26,11 +26,7 @@ pub struct Event<P: Parents + Clone + Serialize> {
 }
 
 impl<P: Parents + Clone + Serialize> Event<P> {
-    pub fn new(
-        payload: Vec<Vec<u8>>,
-        parents: Option<P>,
-        creator: PeerId,
-    ) -> Event<P> {
+    pub fn new(payload: Vec<Vec<u8>>, parents: Option<P>, creator: PeerId) -> Event<P> {
         Event {
             can_see: HashMap::new(),
             creator,
@@ -51,7 +47,11 @@ impl<P: Parents + Clone + Serialize> Event<P> {
 
     #[inline]
     pub fn timestamp(&self) -> Result<u64, Error> {
-        self.timestamp.clone().ok_or(Error::from(EventError::new(EventErrorType::NoTimestamp { hash: self.hash()? })))
+        self.timestamp
+            .clone()
+            .ok_or(Error::from(EventError::new(EventErrorType::NoTimestamp {
+                hash: self.hash()?,
+            })))
     }
 
     #[inline]
@@ -61,12 +61,19 @@ impl<P: Parents + Clone + Serialize> Event<P> {
 
     #[inline]
     pub fn is_self_parent(&self, hash: &EventHash) -> bool {
-        self.parents.clone().map(|p| p.self_parent().unwrap() == hash.clone()).unwrap_or(false)
+        self.parents
+            .clone()
+            .map(|p| p.self_parent().unwrap() == hash.clone())
+            .unwrap_or(false)
     }
 
     #[inline]
     pub fn signature(&self) -> Result<EventSignature, Error> {
-        self.signature.clone().ok_or(Error::from(EventError::new(EventErrorType::NoSignature { hash: self.hash()? })))
+        self.signature
+            .clone()
+            .ok_or(Error::from(EventError::new(EventErrorType::NoSignature {
+                hash: self.hash()?,
+            })))
     }
 
     #[inline]
@@ -96,7 +103,10 @@ impl<P: Parents + Clone + Serialize> Event<P> {
 
     #[inline]
     pub fn round(&self) -> Result<usize, Error> {
-        self.round.ok_or(Error::from(EventError::new(EventErrorType::RoundNotSet { hash: self.hash()? })))
+        self.round
+            .ok_or(Error::from(EventError::new(EventErrorType::RoundNotSet {
+                hash: self.hash()?,
+            })))
     }
 
     #[inline]
@@ -116,7 +126,12 @@ impl<P: Parents + Clone + Serialize> Event<P> {
 
     #[inline]
     pub fn self_parent(&self) -> Result<EventHash, Error> {
-        self.parents.clone().map(|p| p.self_parent().unwrap()).ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent { hash: self.hash()? })))
+        self.parents
+            .clone()
+            .map(|p| p.self_parent().unwrap())
+            .ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent {
+                hash: self.hash()?,
+            })))
     }
 
     #[inline]
@@ -143,16 +158,19 @@ impl<P: Parents + Clone + Serialize> Event<P> {
             self.payload.clone(),
             self.parents.clone(),
             self.timestamp.clone(),
-            self.creator.clone()
+            self.creator.clone(),
         );
         let bytes = serialize(&value)?;
         Ok(EventHash(digest(&SHA256, bytes.as_ref()).as_ref().to_vec()))
     }
-    
+
     pub fn is_valid(&self, hash: &EventHash) -> Result<bool, Error> {
-        self.signature.clone()
+        self.signature
+            .clone()
             .map(|s| s.verify(&self, &self.creator))
-            .unwrap_or(Err(Error::from(EventError::new(EventErrorType::UnsignedEvent { hash: self.hash()? }))))?;
+            .unwrap_or(Err(Error::from(EventError::new(
+                EventErrorType::UnsignedEvent { hash: self.hash()? },
+            ))))?;
         Ok(hash.as_ref() == self.hash()?.as_ref())
     }
 }
@@ -261,15 +279,17 @@ proptest! {
 #[cfg(test)]
 mod tests {
     use event::{Event, EventHash, EventSignature, ParentsPair};
-    use ring::{rand, signature};
     use ring::digest::{digest, SHA256};
+    use ring::{rand, signature};
 
     #[test]
     fn it_should_succeed_when_verifying_correct_event() {
         let rng = rand::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-        let mut event: Event<ParentsPair> = Event::new(vec![], None, kp.public_key_bytes().to_vec());
+        let kp =
+            signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
+        let mut event: Event<ParentsPair> =
+            Event::new(vec![], None, kp.public_key_bytes().to_vec());
         let hash = event.hash().unwrap();
         let sign = kp.sign(hash.as_ref());
         let event_signature = EventSignature(sign.as_ref().to_vec());
@@ -281,8 +301,10 @@ mod tests {
     fn it_shouldnt_succeed_when_verifying_correct_event_with_wrong_hash() {
         let rng = rand::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-        let mut event: Event<ParentsPair> = Event::new(vec![], None, kp.public_key_bytes().to_vec());
+        let kp =
+            signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
+        let mut event: Event<ParentsPair> =
+            Event::new(vec![], None, kp.public_key_bytes().to_vec());
         let hash = event.hash().unwrap();
         let sign = kp.sign(hash.as_ref());
         let event_signature = EventSignature(sign.as_ref().to_vec());
@@ -296,7 +318,8 @@ mod tests {
     fn it_should_error_when_verifying_wrong_event() {
         let rng = rand::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
+        let kp =
+            signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
         let mut event: Event<ParentsPair> = Event::new(vec![], None, vec![]);
         let hash = event.hash().unwrap();
         let sign = kp.sign(hash.as_ref());

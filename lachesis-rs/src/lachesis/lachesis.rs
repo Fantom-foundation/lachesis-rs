@@ -1,14 +1,14 @@
+use super::opera::{Opera, OperaWire};
 use errors::{ResourceHashgraphPoisonError, ResourceHeadPoisonError};
 use event::{Event, EventHash};
 use failure::Error;
 use lachesis::parents_list::ParentsList;
 use node::Node;
 use peer::{Peer, PeerId};
-use rand::Rng;
 use rand::prelude::IteratorRandom;
+use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use super::opera::{Opera, OperaWire};
 
 pub struct Lachesis<P: Peer<Opera> + Clone> {
     head: Mutex<Option<EventHash>>,
@@ -36,13 +36,13 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
 
     #[inline]
     fn select_peers<R: Rng>(&self, rng: &mut R) -> Result<Vec<P>, Error> {
-        Ok(self.network
+        Ok(self
+            .network
             .values()
-            .choose_multiple(rng, self.k-1)
+            .choose_multiple(rng, self.k - 1)
             .into_iter()
             .map(|p| p.clone())
-            .collect()
-        )
+            .collect())
     }
 }
 

@@ -4,7 +4,7 @@ use hashgraph::Hashgraph;
 use std::cmp::max;
 
 pub trait Parents {
-  fn self_parent(&self) -> Result<EventHash, Error>;
+    fn self_parent(&self) -> Result<EventHash, Error>;
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
