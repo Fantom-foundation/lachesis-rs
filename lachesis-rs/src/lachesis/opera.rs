@@ -1,5 +1,5 @@
-use event::{Event, EventHash};
-use lachesis::parents_list::ParentsList;
+use super::parents_list::ParentsList;
+use crate::event::{event_hash::EventHash, Event};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 

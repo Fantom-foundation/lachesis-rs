@@ -2,6 +2,7 @@
 name = "lachesis-rs"
 version = "0.1.0"
 authors = ["Agustin Chiappe Berrini <agustin@auvik.com>"]
+edition = "2018"
 
 [dependencies]
 base64 = "0.10.0"

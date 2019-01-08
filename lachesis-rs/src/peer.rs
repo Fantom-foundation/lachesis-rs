@@ -1,4 +1,4 @@
-use event::EventHash;
+use crate::event::event_hash::EventHash;
 
 pub type PeerId = Vec<u8>;
 

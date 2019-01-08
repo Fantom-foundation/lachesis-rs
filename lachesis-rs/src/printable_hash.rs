@@ -1,5 +1,5 @@
-use event::EventHash;
-use peer::PeerId;
+use crate::event::event_hash::EventHash;
+use crate::peer::PeerId;
 
 pub trait PrintableHash: Sized + AsRef<[u8]> {
     fn printable_hash(&self) -> String {

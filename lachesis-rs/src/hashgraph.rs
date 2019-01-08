@@ -1,7 +1,9 @@
-use errors::{HashgraphError, HashgraphErrorType};
-use event::{Event, EventHash, ParentsPair};
+use crate::errors::{HashgraphError, HashgraphErrorType};
+use crate::event::event_hash::EventHash;
+use crate::event::parents::ParentsPair;
+use crate::event::Event;
+use crate::peer::PeerId;
 use failure::Error;
-use peer::PeerId;
 use std::collections::{BTreeMap, HashMap};
 use std::iter::repeat_with;
 
@@ -199,7 +201,7 @@ impl Hashgraph for BTreeHashgraph {
 #[cfg(test)]
 mod tests {
     use super::{BTreeHashgraph, Hashgraph};
-    use event::{Event, EventHash, ParentsPair};
+    use crate::event::{event_hash::EventHash, parents::ParentsPair, Event};
     use std::collections::HashMap;
 
     #[test]

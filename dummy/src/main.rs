@@ -1,11 +1,7 @@
 #![feature(never_type)]
 
-extern crate env_logger;
-extern crate lachesis_rs;
 #[macro_use]
 extern crate log;
-extern crate ring;
-extern crate untrusted;
 
 mod dummy_node;
 use self::dummy_node::DummyNode;

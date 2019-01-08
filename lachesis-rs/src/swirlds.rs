@@ -1,14 +1,16 @@
-use errors::*;
-use event::{Event, EventHash, EventSignature, ParentsPair};
+use crate::errors::*;
+use crate::event::{
+    event_hash::EventHash, event_signature::EventSignature, parents::ParentsPair, Event,
+};
+use crate::hashgraph::{Hashgraph, HashgraphWire};
+use crate::node::Node;
+use crate::peer::{Peer, PeerId};
+use crate::printable_hash::PrintableHash;
+use crate::round::Round;
 use failure::Error;
-use hashgraph::{Hashgraph, HashgraphWire};
-use node::Node;
-use peer::{Peer, PeerId};
-use printable_hash::PrintableHash;
 use rand::prelude::IteratorRandom;
 use rand::Rng;
 use ring::signature;
-use round::Round;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -877,9 +879,11 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Node for Swirlds<P, H> {
 #[cfg(test)]
 mod tests {
     use super::Swirlds;
-    use event::{Event, EventHash, EventSignature, ParentsPair};
-    use hashgraph::*;
-    use peer::{Peer, PeerId};
+    use crate::event::{
+        event_hash::EventHash, event_signature::EventSignature, parents::ParentsPair, Event,
+    };
+    use crate::hashgraph::*;
+    use crate::peer::{Peer, PeerId};
     use ring::digest::{digest, SHA256};
     use ring::{rand, signature};
     use std::collections::HashSet;
