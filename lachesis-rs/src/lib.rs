@@ -22,6 +22,7 @@ mod peer;
 mod printable_hash;
 mod round;
 mod swirlds;
+pub mod tcp_server;
 
 pub use crate::event::{event_hash::EventHash, Event};
 pub use crate::hashgraph::{BTreeHashgraph, Hashgraph, HashgraphWire};

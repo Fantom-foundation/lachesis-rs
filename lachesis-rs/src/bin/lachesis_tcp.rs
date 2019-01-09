@@ -1,6 +1,8 @@
+extern crate lachesis_rs;
+
+use lachesis_rs::tcp_server::{TcpApp, TcpNode};
 use std::env::args;
 use std::sync::Arc;
-use tcp_client::{TcpApp, TcpNode};
 
 const BASE_PORT: usize = 9000;
 const USAGE: &'static str = "Usage: tcp-client [number of nodes]";

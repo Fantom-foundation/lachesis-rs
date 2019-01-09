@@ -4,5 +4,4 @@ members = [
     "dummy",
     "lachesis-rs",
     "fal",
-    "tcp-client",
 ]

@@ -1,7 +1,9 @@
-#[macro_use]
-extern crate log;
+use crate::event::event_hash::EventHash;
+use crate::hashgraph::{BTreeHashgraph, HashgraphWire};
+use crate::node::Node;
+use crate::peer::{Peer, PeerId};
+use crate::swirlds::Swirlds;
 use bincode::serialize;
-use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId, Swirlds};
 use ring::rand::SystemRandom;
 use ring::signature;
 use std::io::{Read, Write};
