@@ -71,7 +71,7 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
         let new_head_hash = new_head.hash()?;
         let mut head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *head = Some(new_head_hash.clone());
-        opera.insert(new_head_hash.clone(), new_head);
+        opera.insert(new_head_hash.clone(), new_head)?;
         Ok(())
     }
 
