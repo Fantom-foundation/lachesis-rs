@@ -55,7 +55,7 @@ impl Opera {
                 event,
                 flag_table,
                 lamport_timestamp: self.lamport_timestamp,
-            }
+            },
         );
         Ok(())
     }
@@ -67,7 +67,7 @@ impl Opera {
                 .graph
                 .get(p)
                 .ok_or(Error::from(HashgraphError::new(
-                    HashgraphErrorType::EventNotFound
+                    HashgraphErrorType::EventNotFound,
                 )))?
                 .clone();
             ft.insert(p.clone());
