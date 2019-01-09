@@ -1,5 +1,5 @@
 use super::parents_list::ParentsList;
-use crate::errors::{HashgraphError,HashgraphErrorType};
+use crate::errors::{HashgraphError, HashgraphErrorType};
 use crate::event::event_hash::EventHash;
 use crate::event::Event;
 use failure::Error;
@@ -66,9 +66,9 @@ impl Opera {
             let event = self
                 .graph
                 .get(p)
-                .ok_or(Error::from(
-                    HashgraphError::new(HashgraphErrorType::EventNotFound)
-                ))?
+                .ok_or(Error::from(HashgraphError::new(
+                    HashgraphErrorType::EventNotFound
+                )))?
                 .clone();
             ft.insert(p.clone());
             ft = ft.union(&event.flag_table).map(|e| e.clone()).collect();
