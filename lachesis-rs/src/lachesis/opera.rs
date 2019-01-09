@@ -1,8 +1,8 @@
-use crate::errors::{HashgraphError,HashgraphErrorType};
-use crate::event::Event;
-use crate::event::event_hash::EventHash;
-use failure::Error;
 use super::parents_list::ParentsList;
+use crate::errors::{HashgraphError,HashgraphErrorType};
+use crate::event::event_hash::EventHash;
+use crate::event::Event;
+use failure::Error;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::FromIterator;
 
@@ -49,25 +49,29 @@ impl Opera {
             None => HashSet::with_capacity(0),
             Some(ps) => self.parent_list_to_flag_table(ps)?,
         };
-        self.graph.insert(hash, OperaEvent {
-            event,
-            flag_table,
-            lamport_timestamp: self.lamport_timestamp,
-        });
+        self.graph.insert(
+            hash,
+            OperaEvent {
+                event,
+                flag_table,
+                lamport_timestamp: self.lamport_timestamp,
+            }
+        );
         Ok(())
     }
 
     fn parent_list_to_flag_table(&mut self, ps: &ParentsList) -> Result<HashSet<EventHash>, Error> {
         let mut ft = HashSet::new();
         for p in ps.0.iter() {
-            let event = self.graph.get(p).ok_or(Error::from(
-                HashgraphError::new(HashgraphErrorType::EventNotFound)
-            ))?.clone();
+            let event = self
+                .graph
+                .get(p)
+                .ok_or(Error::from(
+                    HashgraphError::new(HashgraphErrorType::EventNotFound)
+                ))?
+                .clone();
             ft.insert(p.clone());
-            ft = ft
-                .union(&event.flag_table)
-                .map(|e| e.clone())
-                .collect();
+            ft = ft.union(&event.flag_table).map(|e| e.clone()).collect();
         }
         Ok(ft)
     }
