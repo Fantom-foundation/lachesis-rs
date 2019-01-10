@@ -8,9 +8,10 @@ use std::iter::FromIterator;
 
 #[derive(Clone)]
 pub struct OperaEvent {
-    event: Event<ParentsList>,
+    pub event: Event<ParentsList>,
     lamport_timestamp: usize,
-    flag_table: HashSet<EventHash>,
+    pub flag_table: HashSet<EventHash>,
+    pub root: bool,
 }
 
 pub struct Opera {
@@ -55,8 +56,24 @@ impl Opera {
                 event,
                 flag_table,
                 lamport_timestamp: self.lamport_timestamp,
+                root: false,
             },
         );
+        Ok(())
+    }
+
+    pub fn unfamous_events(&self) -> Vec<&OperaEvent> {
+        self.graph.values().filter(|e| !e.root).collect()
+    }
+
+    pub fn set_root(&mut self, h: &EventHash) -> Result<(), Error> {
+        let mut e = self
+            .graph
+            .get_mut(h)
+            .ok_or(Error::from(HashgraphError::new(
+                HashgraphErrorType::EventNotFound
+            )))?;
+        e.root = true;
         Ok(())
     }
 

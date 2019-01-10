@@ -26,6 +26,7 @@ pub mod tcp_server;
 
 pub use crate::event::{event_hash::EventHash, Event};
 pub use crate::hashgraph::{BTreeHashgraph, Hashgraph, HashgraphWire};
+pub use crate::lachesis::Lachesis;
 pub use crate::node::Node;
 pub use crate::peer::{Peer, PeerId};
 pub use crate::swirlds::Swirlds;

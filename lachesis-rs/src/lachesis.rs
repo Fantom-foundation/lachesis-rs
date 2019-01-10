@@ -52,11 +52,8 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
             .map(|p| p.clone())
             .collect())
     }
-}
 
-impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
-    type D = OperaWire;
-    fn run<R: Rng>(&self, rng: &mut R) -> Result<(), Error> {
+    fn sync<R: Rng>(&self, rng: &mut R) -> Result<(), Error> {
         let peers = self.select_peers(rng)?;
         let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
         let mut parent_hashes = vec![];
@@ -72,6 +69,30 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
         let mut head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *head = Some(new_head_hash.clone());
         opera.insert(new_head_hash.clone(), new_head)?;
+        Ok(())
+    }
+
+    fn root_selection(&self) -> Result<(), Error> {
+        let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
+        let mut new_root = vec![];
+        for e in opera.unfamous_events().clone() {
+            let is_root = e.flag_table.is_empty();
+            if is_root {
+                new_root.push(e.event.hash()?)
+            }
+        }
+        for h in new_root {
+            opera.set_root(&h);
+        }
+        Ok(())
+    }
+}
+
+impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
+    type D = OperaWire;
+    fn run<R: Rng>(&self, rng: &mut R) -> Result<(), Error> {
+        self.sync(rng)?;
+        self.root_selection()?;
         Ok(())
     }
 
