@@ -82,7 +82,7 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
             }
         }
         for h in new_root {
-            opera.set_root(&h);
+            opera.set_root(&h)?;
         }
         Ok(())
     }
