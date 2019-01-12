@@ -6,7 +6,6 @@ pub struct Frame {
     root_set: HashSet<EventHash>,
 }
 
-
 impl Frame {
     pub fn new(id: usize) -> Frame {
         Frame {
