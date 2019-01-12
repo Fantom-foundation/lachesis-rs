@@ -158,6 +158,27 @@ impl<T> From<PoisonError<T>> for ResourceHashgraphPoisonError {
 }
 
 #[derive(Debug, Fail)]
+#[fail(display = "Frames Mutex was poisoned")]
+pub struct ResourceFramesPoisonError {
+    backtrace: Backtrace,
+}
+
+impl ResourceFramesPoisonError {
+    pub fn new() -> ResourceFramesPoisonError {
+        ResourceFramesPoisonError {
+            backtrace: Backtrace::new(),
+        }
+    }
+}
+
+//for op-?, "auto" type conversion
+impl<T> From<PoisonError<T>> for ResourceFramesPoisonError {
+    fn from(_: PoisonError<T>) -> Self {
+        ResourceFramesPoisonError::new()
+    }
+}
+
+#[derive(Debug, Fail)]
 #[fail(display = "Head Mutex was poisoned")]
 pub struct ResourceHeadPoisonError {
     backtrace: Backtrace,

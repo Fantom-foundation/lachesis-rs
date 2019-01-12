@@ -9,6 +9,7 @@ use std::iter::FromIterator;
 #[derive(Clone)]
 pub struct OperaEvent {
     pub event: Event<ParentsList>,
+    frame: usize,
     lamport_timestamp: usize,
     pub flag_table: HashSet<EventHash>,
     pub root: bool,
@@ -44,7 +45,12 @@ impl Opera {
         }
     }
 
-    pub fn insert(&mut self, hash: EventHash, event: Event<ParentsList>) -> Result<(), Error> {
+    pub fn insert(
+        &mut self,
+        hash: EventHash,
+        event: Event<ParentsList>,
+        frame: usize,
+    ) -> Result<(), Error> {
         self.lamport_timestamp += 1;
         let flag_table = match event.parents() {
             None => HashSet::with_capacity(0),
@@ -55,6 +61,7 @@ impl Opera {
             OperaEvent {
                 event,
                 flag_table,
+                frame,
                 lamport_timestamp: self.lamport_timestamp,
                 root: false,
             },
@@ -74,6 +81,18 @@ impl Opera {
                 HashgraphErrorType::EventNotFound
             )))?;
         e.root = true;
+        e.flag_table = HashSet::new();
+        Ok(())
+    }
+
+    pub fn change_frame(&mut self, h: &EventHash, frame: usize) -> Result<(), Error> {
+        let mut e = self
+            .graph
+            .get_mut(h)
+            .ok_or(Error::from(HashgraphError::new(
+                HashgraphErrorType::EventNotFound
+            )))?;
+        e.frame = frame;
         Ok(())
     }
 
@@ -87,7 +106,9 @@ impl Opera {
                     HashgraphErrorType::EventNotFound,
                 )))?
                 .clone();
-            ft.insert(p.clone());
+            if event.root {
+                ft.insert(p.clone());
+            }
             ft = ft.union(&event.flag_table).map(|e| e.clone()).collect();
         }
         Ok(ft)

@@ -1,4 +1,5 @@
-use crate::errors::{ResourceHashgraphPoisonError, ResourceHeadPoisonError};
+use crate::errors::{ResourceHashgraphPoisonError, ResourceHeadPoisonError,
+                    ResourceFramesPoisonError};
 use crate::event::event_hash::EventHash;
 use crate::event::Event;
 use crate::lachesis::opera::Opera;
@@ -9,14 +10,19 @@ use rand::prelude::IteratorRandom;
 use rand::Rng;
 use ring::signature::Ed25519KeyPair;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
+pub mod frame;
 pub mod opera;
 pub mod parents_list;
+use self::frame::Frame;
 use self::opera::OperaWire;
 use self::parents_list::ParentsList;
 
 pub struct Lachesis<P: Peer<Opera> + Clone> {
+    current_frame: AtomicUsize,
+    frames: Mutex<Vec<Frame>>,
     head: Mutex<Option<EventHash>>,
     k: usize,
     network: HashMap<PeerId, P>,
@@ -26,10 +32,15 @@ pub struct Lachesis<P: Peer<Opera> + Clone> {
 
 impl<P: Peer<Opera> + Clone> Lachesis<P> {
     pub fn new(k: usize, pk: Ed25519KeyPair) -> Lachesis<P> {
+        let frame = Frame::new(0);
+        let current_frame = AtomicUsize::new(frame.id());
+        let frames = Mutex::new(vec![frame]);
         let network = HashMap::new();
         let opera = Mutex::new(Opera::new());
         let head = Mutex::new(None);
         Lachesis {
+            current_frame,
+            frames,
             head,
             k,
             network,
@@ -68,21 +79,48 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         let new_head_hash = new_head.hash()?;
         let mut head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *head = Some(new_head_hash.clone());
-        opera.insert(new_head_hash.clone(), new_head)?;
+        opera.insert(new_head_hash.clone(), new_head, self.current_frame.load(Ordering::Relaxed))?;
         Ok(())
     }
 
     fn root_selection(&self) -> Result<(), Error> {
+        let new_frame = self.assign_new_roots()?;
+        self.maybe_create_new_frame(new_frame)?;
+        Ok(())
+    }
+
+    fn assign_new_roots(&self) -> Result<Vec<EventHash>, Error> {
         let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
         let mut new_root = vec![];
+        let mut new_frame = vec![];
         for e in opera.unfamous_events().clone() {
-            let is_root = e.flag_table.is_empty();
+            let is_root = e.flag_table.is_empty() || e.flag_table.len() > 2 / 3 * self.network.len();
             if is_root {
-                new_root.push(e.event.hash()?)
+                let hash = e.event.hash()?;
+                new_root.push(hash.clone());
+                if !e.flag_table.is_empty() {
+                    new_frame.push(hash);
+                }
             }
         }
         for h in new_root {
             opera.set_root(&h)?;
+        }
+        Ok(new_frame)
+    }
+
+    fn maybe_create_new_frame(&self, new_frame: Vec<EventHash>) -> Result<(), Error> {
+        let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
+        if !new_frame.is_empty() {
+            let mut new_current_frame = Frame::new(self.current_frame.load(Ordering::Relaxed) + 1);
+            let new_current_frame_id = new_current_frame.id();
+            self.current_frame.store(new_current_frame_id, Ordering::Relaxed);
+            for h in new_frame {
+                opera.change_frame(&h, new_current_frame_id)?;
+                new_current_frame.add(h);
+            }
+            let mut frames = get_from_mutex!(self.frames, ResourceFramesPoisonError)?;
+            frames.push(new_current_frame);
         }
         Ok(())
     }
