@@ -78,7 +78,7 @@ impl Opera {
             .graph
             .get_mut(h)
             .ok_or(Error::from(HashgraphError::new(
-                HashgraphErrorType::EventNotFound
+                HashgraphErrorType::EventNotFound,
             )))?;
         e.root = true;
         e.flag_table = HashSet::new();
@@ -90,7 +90,7 @@ impl Opera {
             .graph
             .get_mut(h)
             .ok_or(Error::from(HashgraphError::new(
-                HashgraphErrorType::EventNotFound
+                HashgraphErrorType::EventNotFound,
             )))?;
         e.frame = frame;
         Ok(())

@@ -1,5 +1,6 @@
-use crate::errors::{ResourceHashgraphPoisonError, ResourceHeadPoisonError,
-                    ResourceFramesPoisonError};
+use crate::errors::{
+    ResourceFramesPoisonError, ResourceHashgraphPoisonError, ResourceHeadPoisonError,
+};
 use crate::event::event_hash::EventHash;
 use crate::event::Event;
 use crate::lachesis::opera::Opera;
@@ -79,7 +80,11 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         let new_head_hash = new_head.hash()?;
         let mut head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *head = Some(new_head_hash.clone());
-        opera.insert(new_head_hash.clone(), new_head, self.current_frame.load(Ordering::Relaxed))?;
+        opera.insert(
+            new_head_hash.clone(),
+            new_head,
+            self.current_frame.load(Ordering::Relaxed),
+        )?;
         Ok(())
     }
 
@@ -94,7 +99,8 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         let mut new_root = vec![];
         let mut new_frame = vec![];
         for e in opera.unfamous_events().clone() {
-            let is_root = e.flag_table.is_empty() || e.flag_table.len() > 2 / 3 * self.network.len();
+            let is_root =
+                e.flag_table.is_empty() || e.flag_table.len() > 2 / 3 * self.network.len();
             if is_root {
                 let hash = e.event.hash()?;
                 new_root.push(hash.clone());
@@ -114,7 +120,8 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         if !new_frame.is_empty() {
             let mut new_current_frame = Frame::new(self.current_frame.load(Ordering::Relaxed) + 1);
             let new_current_frame_id = new_current_frame.id();
-            self.current_frame.store(new_current_frame_id, Ordering::Relaxed);
+            self.current_frame
+                .store(new_current_frame_id, Ordering::Relaxed);
             for h in new_frame {
                 opera.change_frame(&h, new_current_frame_id)?;
                 new_current_frame.add(h);
