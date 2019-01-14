@@ -94,6 +94,27 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         Ok(())
     }
 
+    fn clotho_selection(&self) -> Result<(), Error> {
+        let current_frame_id = self.current_frame.load(Ordering::Relaxed);
+        if current_frame_id > 0 {
+            let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
+            let frames = get_from_mutex!(self.frames, ResourceFramesPoisonError)?;
+            let current_frame: &Frame = &frames[current_frame_id];
+            let previous_frame: &Frame = &frames[current_frame_id - 1];
+            for root in previous_frame.root_set.iter() {
+                let seen_by = current_frame
+                    .root_set
+                    .iter()
+                    .filter(|eh| opera.can_see(*eh, root).unwrap())
+                    .count();
+                if seen_by > self.network.len() / 3 {
+                    opera.set_clotho(root)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn assign_new_roots(&self) -> Result<Vec<EventHash>, Error> {
         let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
         let mut new_root = vec![];
@@ -138,6 +159,7 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
     fn run<R: Rng>(&self, rng: &mut R) -> Result<(), Error> {
         self.sync(rng)?;
         self.root_selection()?;
+        self.clotho_selection()?;
         Ok(())
     }
 

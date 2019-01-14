@@ -8,10 +8,11 @@ use std::iter::FromIterator;
 
 #[derive(Clone)]
 pub struct OperaEvent {
+    clotho: bool,
     pub event: Event<ParentsList>,
+    pub flag_table: HashSet<EventHash>,
     frame: usize,
     lamport_timestamp: usize,
-    pub flag_table: HashSet<EventHash>,
     pub root: bool,
 }
 
@@ -59,6 +60,7 @@ impl Opera {
         self.graph.insert(
             hash,
             OperaEvent {
+                clotho: true,
                 event,
                 flag_table,
                 frame,
@@ -82,6 +84,17 @@ impl Opera {
             )))?;
         e.root = true;
         e.flag_table = HashSet::new();
+        Ok(())
+    }
+
+    pub fn set_clotho(&mut self, h: &EventHash) -> Result<(), Error> {
+        let mut e = self
+            .graph
+            .get_mut(h)
+            .ok_or(Error::from(HashgraphError::new(
+                HashgraphErrorType::EventNotFound,
+            )))?;
+        e.clotho = true;
         Ok(())
     }
 
@@ -130,6 +143,40 @@ impl Opera {
             graph: diff_keys,
             lamport_timestamp: self.lamport_timestamp,
         }
+    }
+
+    pub fn can_see(&self, seer: &EventHash, seen: &EventHash) -> Result<bool, Error> {
+        if seer == seen {
+            Ok(true)
+        } else {
+            let ancestors = self.get_ancestors(seer)?;
+            Ok(ancestors.contains(seen))
+        }
+    }
+
+    fn get_ancestors(&self, hash: &EventHash) -> Result<Vec<EventHash>, Error> {
+        let event = self
+            .graph
+            .get(hash)
+            .ok_or(Error::from(HashgraphError::new(
+                HashgraphErrorType::EventNotFound,
+            )))?
+            .clone();
+        let result = match event.event.parents() {
+            None => vec![],
+            Some(p) => {
+                let mut base = p.0.clone();
+                let mut prev =
+                    p.0.iter()
+                        .map(|ph| self.get_ancestors(ph).unwrap())
+                        .map(|v| v.into_iter())
+                        .flatten()
+                        .collect();
+                base.append(&mut prev);
+                base
+            }
+        };
+        Ok(result)
     }
 }
 

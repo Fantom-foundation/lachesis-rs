@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 pub struct Frame {
     id: usize,
-    root_set: HashSet<EventHash>,
+    pub root_set: HashSet<EventHash>,
 }
 
 impl Frame {
