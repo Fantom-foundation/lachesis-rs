@@ -19,7 +19,9 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const C: usize = 6;
+// const C is the frequency of coin toss rounds
+// Swirlds paper requires C > 2; let keep it prime
+const C: usize = 3;
 
 #[inline]
 fn get_current_timestamp() -> u64 {
@@ -291,7 +293,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
                     self.vote(veh.clone(), eh.clone(), witnesses.contains(&eh))?;
                 } else {
                     let (vote, stake) = self.get_vote(&witnesses, &eh)?;
-                    if (round - ur) % C != 1 {
+                    if (round - ur) % C > 0 {
                         if stake > super_majority {
                             famous_events.insert(eh, vote);
                             rounds_done.insert(ur);
@@ -545,7 +547,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
         eh: &EventHash,
     ) -> Result<(bool, usize), Error> {
         let total = self.get_votes_for_event(witnesses, eh)?;
-        if total > witnesses.len() / 2 {
+        if total >= witnesses.len() / 2 {
             Ok((true, total))
         } else {
             Ok((false, witnesses.len() - total))
