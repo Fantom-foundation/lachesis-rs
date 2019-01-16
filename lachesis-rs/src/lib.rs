@@ -6,6 +6,8 @@ extern crate log;
 extern crate proptest;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate json;
 
 macro_rules! get_from_mutex {
     ($resource: expr, $error: ident) => {
@@ -16,6 +18,7 @@ macro_rules! get_from_mutex {
 mod errors;
 mod event;
 mod hashgraph;
+mod http_server;
 mod lachesis;
 mod node;
 mod peer;
@@ -26,6 +29,7 @@ pub mod tcp_server;
 
 pub use crate::event::{event_hash::EventHash, Event};
 pub use crate::hashgraph::{BTreeHashgraph, Hashgraph, HashgraphWire};
+pub use crate::http_server::HttpServer;
 pub use crate::lachesis::Lachesis;
 pub use crate::node::Node;
 pub use crate::peer::{Peer, PeerId};
