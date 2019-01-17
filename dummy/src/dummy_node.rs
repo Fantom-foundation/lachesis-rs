@@ -1,12 +1,15 @@
+use failure::Error;
 use lachesis_rs::{BTreeHashgraph, EventHash, HashgraphWire, Node, Peer, PeerId, Swirlds};
 use ring::rand::SystemRandom;
 use ring::signature;
 
-fn create_node(rng: &mut SystemRandom) -> Swirlds<DummyNode, BTreeHashgraph> {
+fn create_node(rng: &mut SystemRandom) -> Result<Swirlds<DummyNode, BTreeHashgraph>, Error> {
     let hashgraph = BTreeHashgraph::new();
-    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng).unwrap();
-    let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-    Swirlds::new(kp, hashgraph).unwrap()
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng)
+        .map_err(|e| Error::from_boxed_compat(Box::new(e)))?;
+    let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes))
+        .map_err(|e| Error::from_boxed_compat(Box::new(e)))?;
+    Swirlds::new(kp, hashgraph)
 }
 
 pub struct DummyNode {
@@ -15,10 +18,14 @@ pub struct DummyNode {
 }
 
 impl DummyNode {
-    pub fn new(rng: &mut SystemRandom) -> DummyNode {
-        let node = create_node(rng);
-        let id = node.get_id();
-        DummyNode { id, node }
+    pub fn new(rng: &mut SystemRandom) -> Result<DummyNode, Error> {
+        match create_node(rng) {
+            Ok(node) => Ok(DummyNode {
+                id: node.get_id(),
+                node,
+            }),
+            Err(e) => Err(e),
+        }
     }
 }
 

@@ -4,6 +4,7 @@ Cargo.lock
 *.swp
 *.xml
 .idea
+*.iml
 *.patch
 *~
 *.bak
