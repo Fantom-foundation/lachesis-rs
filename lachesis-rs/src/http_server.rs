@@ -23,13 +23,12 @@ impl HttpServer {
             .resource("/peer", |r| r.method(http::Method::GET).a(get_peers))
     }
 
-    pub fn start() {
+    pub fn start() -> Result<&'static str, Error> {
         server::new(|| HttpServer::create_app())
-            .bind("127.0.0.1:8080")
-            .unwrap()
+            .bind("127.0.0.1:8080")?
             .shutdown_timeout(1)
             .start();
-        println!("Started http server: 127.0.0.1:8080");
+        Ok("Started http server: 127.0.0.1:8080")
     }
 }
 

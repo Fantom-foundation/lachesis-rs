@@ -284,7 +284,9 @@ proptest! {
 
 #[cfg(test)]
 mod tests {
+    use crate::event::event_signature::EventSignature;
     use crate::event::{parents::ParentsPair, Event, EventHash, EventSignature};
+    use crate::EventHash;
     use ring::digest::{digest, SHA256};
     use ring::{rand, signature};
 

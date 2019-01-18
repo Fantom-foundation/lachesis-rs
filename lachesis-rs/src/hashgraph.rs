@@ -43,6 +43,46 @@ impl From<HashgraphWire> for BTreeHashgraph {
     }
 }
 
+enum ParentPairElem {
+    OtherParent,
+    SelfParent,
+}
+
+fn _get_ancestors<'a>(
+    graph: &'a BTreeHashgraph,
+    id: &'a EventHash,
+    parent_pair_elem: ParentPairElem,
+) -> Vec<&'a EventHash> {
+    let mut prev = Some(id);
+    repeat_with(|| {
+        match prev {
+            Some(previous) => {
+                let send = Some(previous);
+                match graph.get(previous) {
+                    Ok(event) => {
+                        /*prev =*/
+                        match event.parents() {
+                            Some(ParentsPair(self_parent, other_parent)) => {
+                                Some(match parent_pair_elem {
+                                    ParentPairElem::OtherParent => other_parent,
+                                    ParentPairElem::SelfParent => self_parent,
+                                })
+                            }
+                            None => None,
+                        };
+                        send
+                    }
+                    Err(_) => None,
+                }
+            }
+            None => None,
+        }
+    })
+    .take_while(|e| e.is_some())
+    .map(|v| v.unwrap()) // This is safe because of the take_while
+    .collect()
+}
+
 impl Hashgraph for BTreeHashgraph {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event<ParentsPair>, Error> {
         self.0.get_mut(id).ok_or(Error::from(HashgraphError::new(
@@ -69,43 +109,11 @@ impl Hashgraph for BTreeHashgraph {
     }
 
     fn other_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash> {
-        let mut prev = Some(id);
-        repeat_with(|| {
-            if let Some(previous) = prev {
-                let send = Some(previous);
-                let event = self.get(previous).unwrap(); // TODO: Properly send this error
-                prev = match event.parents() {
-                    Some(ParentsPair(_, other_parent)) => Some(other_parent),
-                    None => None,
-                };
-                send
-            } else {
-                None
-            }
-        })
-        .take_while(|e| e.is_some())
-        .map(|v| v.unwrap()) // This is safe because of the take_while
-        .collect()
+        _get_ancestors(self, id, ParentPairElem::OtherParent)
     }
 
     fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash> {
-        let mut prev = Some(id);
-        repeat_with(|| {
-            if let Some(previous) = prev {
-                let send = Some(previous);
-                let event = self.get(previous).unwrap(); // TODO: Properly send this error
-                prev = match event.parents() {
-                    Some(ParentsPair(self_parent, _)) => Some(self_parent),
-                    None => None,
-                };
-                send
-            } else {
-                None
-            }
-        })
-        .take_while(|e| e.is_some())
-        .map(|v| v.unwrap()) // This is safe because of the take_while
-        .collect()
+        _get_ancestors(self, id, ParentPairElem::SelfParent)
     }
 
     #[inline]
@@ -180,7 +188,12 @@ impl Hashgraph for BTreeHashgraph {
         self.0
             .values()
             .filter(|e| e.is_root())
-            .map(|e| e.hash().unwrap())
+            .map(|e| match e.hash() {
+                Ok(hash) => Some(hash),
+                Err(_) => None,
+            })
+            .filter(|e| e.is_some())
+            .map(|e| e.unwrap())
             .collect()
     }
 

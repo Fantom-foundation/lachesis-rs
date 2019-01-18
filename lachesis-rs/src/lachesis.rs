@@ -17,6 +17,7 @@ use std::sync::Mutex;
 pub mod frame;
 pub mod opera;
 pub mod parents_list;
+
 use self::frame::Frame;
 use self::opera::OperaWire;
 use self::parents_list::ParentsList;
@@ -71,7 +72,7 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         let mut parent_hashes = vec![];
         let peer_id = self.pk.public_key_bytes().to_vec();
         for p in peers {
-            let (h, new_events) = p.get_sync(peer_id.clone(), Some(&opera));
+            let (h, new_events) = p.get_sync(peer_id.clone(), Some(&opera))?;
             opera.sync(new_events);
             parent_hashes.push(h);
         }
@@ -105,7 +106,11 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
                 let seen_by = current_frame
                     .root_set
                     .iter()
-                    .filter(|eh| opera.can_see(*eh, root).unwrap())
+                    .map(|eh| match opera.can_see(&*eh, root) {
+                        Ok(c) => Some(c),
+                        Err(_) => None,
+                    })
+                    .filter(|eh| eh.is_some())
                     .count();
                 if seen_by > self.network.len() / 3 {
                     opera.set_clotho(root)?;
@@ -175,6 +180,9 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
             }
             None => opera.wire(),
         };
-        Ok((head.clone().unwrap(), resp))
+        match head.clone() {
+            Some(cloned_head) => Ok((cloned_head, resp)),
+            None => Err(format_err!("head.clone() returned None")),
+        }
     }
 }

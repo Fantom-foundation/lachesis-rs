@@ -19,21 +19,23 @@ pub struct DummyNode {
 
 impl DummyNode {
     pub fn new(rng: &mut SystemRandom) -> Result<DummyNode, Error> {
-        match create_node(rng) {
-            Ok(node) => Ok(DummyNode {
-                id: node.get_id(),
-                node,
-            }),
-            Err(e) => Err(e),
-        }
+        let node = create_node(rng)?;
+        Ok(DummyNode {
+            id: node.get_id(),
+            node,
+        })
     }
 }
 
 impl Peer<BTreeHashgraph> for DummyNode {
-    fn get_sync(&self, _pk: PeerId, _h: Option<&BTreeHashgraph>) -> (EventHash, BTreeHashgraph) {
-        let (eh, wire): (EventHash, HashgraphWire) = self.node.respond_message(None).unwrap();
+    fn get_sync(
+        &self,
+        _pk: PeerId,
+        _h: Option<&BTreeHashgraph>,
+    ) -> Result<(EventHash, BTreeHashgraph), Error> {
+        let (eh, wire): (EventHash, HashgraphWire) = self.node.respond_message(None)?;
         let hashgraph = BTreeHashgraph::from(wire);
-        (eh, hashgraph)
+        Ok((eh, hashgraph))
     }
     fn id(&self) -> &PeerId {
         &self.id
