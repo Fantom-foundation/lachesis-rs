@@ -830,7 +830,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
         round.iter().for_each(|r| event.set_round(r.clone()));
         let hash = event.hash()?;
         let signature = self.pk.sign(hash.as_ref());
-        event.sign(EventSignature(signature.as_ref().to_vec()));
+        event.sign(EventSignature::new(signature.as_ref()));
         self.add_event(event)?;
         let mut current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *current_head = Some(hash.clone());
@@ -903,7 +903,7 @@ mod tests {
 
     fn create_useless_peer(id: PeerId) -> Arc<Box<DummyPeer>> {
         let digest = digest(&SHA256, b"42");
-        let event = EventHash(digest.as_ref().to_vec());
+        let event = EventHash::new(digest.as_ref());
         Arc::new(Box::new(DummyPeer {
             hashgraph: BTreeHashgraph::new(),
             head: event,
@@ -1006,7 +1006,7 @@ mod tests {
             hashgraph.get(&head).unwrap().clone()
         };
         use ring::digest::{digest, SHA256};
-        let real_hash = EventHash(digest(&SHA256, &vec![1]).as_ref().to_vec());
+        let real_hash = EventHash::new(digest(&SHA256, &vec![1]).as_ref());
         assert!(!node.is_valid_event(&real_hash, &event).unwrap());
     }
 
@@ -1021,7 +1021,7 @@ mod tests {
         );
         let hash = event.hash().unwrap();
         let signature = node.pk.sign(hash.as_ref()).as_ref().to_vec();
-        event.sign(EventSignature(signature));
+        event.sign(EventSignature::new(signature.as_ref()));
         node.add_event(event.clone()).unwrap();
         assert!(!node.is_valid_event(&hash, &event).unwrap());
     }
@@ -1057,7 +1057,7 @@ mod tests {
             (*mutex_guard).clone()
         };
         use ring::digest::{digest, SHA256};
-        let real_hash = EventHash(digest(&SHA256, &vec![1]).as_ref().to_vec());
+        let real_hash = EventHash::new(digest(&SHA256, &vec![1]).as_ref());
         node.maybe_change_head(real_hash.clone(), remote_hashgraph)
             .unwrap();
     }
