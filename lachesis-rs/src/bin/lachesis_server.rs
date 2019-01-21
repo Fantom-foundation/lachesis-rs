@@ -15,7 +15,7 @@ fn main() {
     env_logger::init();
     let sys = actix::System::new("lachesis_server");
     match HttpServer::start() {
-        Ok(connection_message) => println!(connection_message),
+        Ok(connection_message) => println!("{:?}", connection_message),
         Err(e) => panic!(e),
     }
     let _ = sys.run();

@@ -2,6 +2,7 @@ use crate::event::event_hash::EventHash;
 use crate::peer::PeerId;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct Round {
     pub id: usize,
     witnesses: HashMap<PeerId, EventHash>,
@@ -37,6 +38,7 @@ mod tests {
     #[test]
     fn it_should_correctly_get_all_witnesses() {
         let mut round = Round::new(0);
+        let a = round.clone();
         let digest1 = digest(&SHA256, b"42");
         let event1 = EventHash(digest1.as_ref().to_vec());
         let digest2 = digest(&SHA256, b"fish");
