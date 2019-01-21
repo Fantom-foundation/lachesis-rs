@@ -106,12 +106,14 @@ impl EventError {
 #[derive(Debug)]
 pub(crate) enum HashgraphErrorType {
     EventNotFound,
+    NoLamportTimeSet,
 }
 
 impl fmt::Display for HashgraphErrorType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let msg = match self {
             HashgraphErrorType::EventNotFound => "Event not found in hashgraph",
+            HashgraphErrorType::NoLamportTimeSet => "No root has lamport timestamp set",
         };
         write!(f, "{}", msg)
     }

@@ -6,14 +6,20 @@ use failure::Error;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::FromIterator;
 
+#[derive(Clone, PartialEq)]
+pub enum OperaEventType {
+    Clotho(Option<usize>),
+    Root,
+    Undefined,
+}
+
 #[derive(Clone)]
 pub struct OperaEvent {
-    clotho: bool,
     pub event: Event<ParentsList>,
     pub flag_table: HashSet<EventHash>,
     frame: usize,
-    lamport_timestamp: usize,
-    pub root: bool,
+    pub lamport_timestamp: usize,
+    event_type: OperaEventType,
 }
 
 pub struct Opera {
@@ -60,19 +66,36 @@ impl Opera {
         self.graph.insert(
             hash,
             OperaEvent {
-                clotho: true,
                 event,
                 flag_table,
                 frame,
+                event_type: OperaEventType::Undefined,
                 lamport_timestamp: self.lamport_timestamp,
-                root: false,
             },
         );
         Ok(())
     }
 
     pub fn unfamous_events(&self) -> Vec<&OperaEvent> {
-        self.graph.values().filter(|e| !e.root).collect()
+        self.graph
+            .values()
+            .filter(|e| e.event_type != OperaEventType::Root)
+            .collect()
+    }
+
+    pub fn get_event_mut(&mut self, h: &EventHash) -> Result<&mut OperaEvent, Error> {
+        self.graph.get_mut(h).ok_or(Error::from(HashgraphError::new(
+            HashgraphErrorType::EventNotFound,
+        )))
+    }
+
+    pub fn get_event(&self, h: &EventHash) -> Result<OperaEvent, Error> {
+        self.graph
+            .get(h)
+            .map(|v| v.clone())
+            .ok_or(Error::from(HashgraphError::new(
+                HashgraphErrorType::EventNotFound,
+            )))
     }
 
     pub fn set_root(&mut self, h: &EventHash) -> Result<(), Error> {
@@ -82,7 +105,7 @@ impl Opera {
             .ok_or(Error::from(HashgraphError::new(
                 HashgraphErrorType::EventNotFound,
             )))?;
-        e.root = true;
+        e.event_type = OperaEventType::Root;
         e.flag_table = HashSet::new();
         Ok(())
     }
@@ -94,7 +117,13 @@ impl Opera {
             .ok_or(Error::from(HashgraphError::new(
                 HashgraphErrorType::EventNotFound,
             )))?;
-        e.clotho = true;
+        e.event_type = OperaEventType::Clotho(None);
+        Ok(())
+    }
+
+    pub fn set_consensus_time(&mut self, h: &EventHash, time: usize) -> Result<(), Error> {
+        let mut e = self.get_event_mut(h)?;
+        e.event_type = OperaEventType::Clotho(Some(time));
         Ok(())
     }
 
@@ -119,7 +148,7 @@ impl Opera {
                     HashgraphErrorType::EventNotFound,
                 )))?
                 .clone();
-            if event.root {
+            if event.event_type == OperaEventType::Root {
                 ft.insert(p.clone());
             }
             ft = ft.union(&event.flag_table).map(|e| e.clone()).collect();
