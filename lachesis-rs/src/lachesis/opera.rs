@@ -175,7 +175,10 @@ impl Opera {
                     p.0.iter()
                         .map(|ph| match self.get_ancestors(ph) {
                             Ok(ancestors) => Some(ancestors),
-                            Err(_) => None,
+                            Err(e) => {
+                                debug!(target: "swirlds", "{}", e);
+                                return None;
+                            }
                         })
                         .filter(|ph| ph.is_some())
                         .map(|v| v.unwrap().into_iter())

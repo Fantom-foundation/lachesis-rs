@@ -100,14 +100,17 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
                 let res = match events.get(peer) {
                     Ok(event_id) => match h.get(event_id) {
                         Ok(event) => match event.parents() {
-                            Some(ParentsPair(_, other_parent)) =>
-                                write!(f, "{}  ", other_parent.printable_hash()),
-                            None => write!(f, "          ")?
-                        }
+                            Some(ParentsPair(_, other_parent)) => {
+                                write!(f, "{}  ", other_parent.printable_hash())
+                            }
+                            None => write!(f, "          ")?,
+                        },
                     },
-                    Err(e) => Err(e.compat())
+                    Err(e) => Err(e.compat()),
                 };
-                if res.is_err() { return res; }
+                if res.is_err() {
+                    return res;
+                }
             }
             writeln!(f, "")?;
             Ok(())
@@ -124,13 +127,14 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
                         Ok(ev) => {
                             if let Some(round) = ev.maybe_round() {
                                 let r_string = format!("{}", round);
-                                let spaces = (0..(10 - r_string.len())).map(|_| " ").collect::<String>();
+                                let spaces =
+                                    (0..(10 - r_string.len())).map(|_| " ").collect::<String>();
                                 write!(f, "{}{}", round, spaces)?;
                             } else {
                                 write!(f, "          ")?;
                             }
                         }
-                        Err(e) => Err(e.compat())
+                        Err(e) => Err(e.compat()),
                     }
                 } else {
                     write!(f, "          ")?;
@@ -326,7 +330,10 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
                 .into_iter()
                 .map(|r| match self.are_all_witnesses_famous(r) {
                     Ok(famous) => Some(famous),
-                    Err(_) => None
+                    Err(e) => {
+                        debug!(target: "swirlds", "{}", e);
+                        return None;
+                    }
                 })
                 .filter(|f| f.is_some())
                 .map(|f| f.unwrap().into()),
@@ -478,15 +485,19 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
         let mut hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         let times = timestamp_deciders
             .into_iter()
-            .map(|eh|
-                match hashgraph.get(&eh) {
-                    Ok(hg) => match hg.timestamp() {
-                        Ok(timestamp) => Some(timestamp),
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
+            .map(|eh| match hashgraph.get(&eh) {
+                Ok(hg) => match hg.timestamp() {
+                    Ok(timestamp) => Some(timestamp),
+                    Err(e) => {
+                        debug!(target: "swirlds", "{}", e);
+                        return None;
+                    }
+                },
+                Err(e) => {
+                    debug!(target: "swirlds", "{}", e);
+                    return None;
                 }
-            )
+            })
             .filter(|eh| eh.is_some())
             .map(|eh| eh.unwrap())
             .collect::<Vec<u64>>();
@@ -547,7 +558,10 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
                 .into_iter()
                 .map(|eh| match hashgraph.get(eh) {
                     Ok(event) => Some(event),
-                    Err(_) => None
+                    Err(e) => {
+                        debug!(target: "swirlds", "{}", e);
+                        return None;
+                    }
                 })
                 .filter(|eh| eh.is_some())
                 .map(|eh| eh.unwrap())
@@ -564,7 +578,10 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
             .iter()
             .map(|eh| match hashgraph.get(eh) {
                 Ok(eh_hg) => Some(eh_hg),
-                Err(_) => None
+                Err(e) => {
+                    debug!(target: "swirlds", "{}", e);
+                    return None;
+                }
             })
             .filter(|eh_hg_opt| eh_hg_opt.is_some())
             .map(|eh_hg_opt| eh_hg_opt.unwrap())
@@ -612,7 +629,10 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
             .flatten()
             .map(|(_, h)| match hashgraph.get(&h) {
                 Ok(hg) => Some(hg),
-                Err(_) => None,
+                Err(e) => {
+                    debug!(target: "swirlds", "{}", e);
+                    return None;
+                }
             })
             .filter(|hg_opt| hg_opt.is_some())
             .map(|hg_opt| hg_opt.unwrap())
@@ -1011,7 +1031,7 @@ mod tests {
             Some(ParentsPair(prev_head.clone(), prev_head.clone())),
             None,
         )
-            .unwrap();
+        .unwrap();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         assert_ne!(head, prev_head);
         let hashgraph = node.hashgraph.lock().unwrap();

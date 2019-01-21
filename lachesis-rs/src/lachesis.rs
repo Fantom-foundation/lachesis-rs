@@ -108,7 +108,10 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
                     .iter()
                     .map(|eh| match opera.can_see(&*eh, root) {
                         Ok(c) => Some(c),
-                        Err(_) => None,
+                        Err(e) => {
+                            debug!(target: "swirlds", "{}", e);
+                            return None;
+                        }
                     })
                     .filter(|eh| eh.is_some())
                     .count();

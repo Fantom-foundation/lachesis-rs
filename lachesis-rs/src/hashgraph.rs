@@ -72,7 +72,10 @@ fn _get_ancestors<'a>(
                         };
                         send
                     }
-                    Err(_) => None,
+                    Err(e) => {
+                        debug!(target: "swirlds", "{}", e);
+                        return None;
+                    }
                 }
             }
             None => None,
@@ -190,7 +193,10 @@ impl Hashgraph for BTreeHashgraph {
             .filter(|e| e.is_root())
             .map(|e| match e.hash() {
                 Ok(hash) => Some(hash),
-                Err(_) => None,
+                Err(e) => {
+                    debug!(target: "swirlds", "{}", e);
+                    return None;
+                }
             })
             .filter(|e| e.is_some())
             .map(|e| e.unwrap())
