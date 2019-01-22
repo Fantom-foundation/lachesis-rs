@@ -3,12 +3,22 @@ use crate::event::Event;
 use crate::peer::PeerId;
 use failure::Error;
 use ring::signature::{verify, ED25519};
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt::{self, Debug};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct EventSignature(pub Vec<u8>);
+#[derive(Clone, Deserialize, Serialize)]
+pub struct EventSignature(
+    #[serde(serialize_with = "serialize_array")]
+    #[serde(deserialize_with = "deserialize_array")]
+    pub [u8; 64],
+);
 
 impl EventSignature {
+    pub fn new(digest: &[u8]) -> EventSignature {
+        let mut a: [u8; 64] = [0; 64];
+        a.copy_from_slice(&digest[0..64]);
+        EventSignature(a)
+    }
     pub fn verify<P: Parents + Clone + Serialize>(
         &self,
         event: &Event<P>,
@@ -22,8 +32,49 @@ impl EventSignature {
     }
 }
 
+fn serialize_array<S, T>(array: &[T], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Serialize,
+{
+    array.serialize(serializer)
+}
+
+fn deserialize_array<'de, D, T>(deserializer: D) -> Result<[T; 64], D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + 'de + Copy,
+{
+    let mut result: [T; 64] = unsafe { ::std::mem::uninitialized() };
+    let slice: Vec<T> = Deserialize::deserialize(deserializer)?;
+    if slice.len() != 64 {
+        return Err(::serde::de::Error::custom("input slice has wrong length"));
+    }
+    result.copy_from_slice(&slice);
+    Ok(result)
+}
+
 impl AsRef<[u8]> for EventSignature {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
+    }
+}
+
+impl Debug for EventSignature {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.0[..].fmt(formatter)
+    }
+}
+
+impl Eq for EventSignature {}
+
+impl PartialEq for EventSignature {
+    #[inline]
+    fn eq(&self, other: &EventSignature) -> bool {
+        self.0[..] == other.0[..]
+    }
+    #[inline]
+    fn ne(&self, other: &EventSignature) -> bool {
+        self.0[..] != other.0[..]
     }
 }
