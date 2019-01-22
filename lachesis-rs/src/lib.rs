@@ -6,7 +6,7 @@ extern crate log;
 extern crate proptest;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
+
 extern crate json;
 
 macro_rules! get_from_mutex {

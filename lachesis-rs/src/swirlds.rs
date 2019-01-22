@@ -463,9 +463,12 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
         eh: &EventHash,
     ) -> Result<bool, Error> {
         let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
-        Ok(unique_famous_witnesses
-            .iter()
-            .all(|ufwh| hashgraph.ancestors(ufwh).contains(&eh)))
+        for witness in unique_famous_witnesses.iter() {
+            if !hashgraph.ancestors(witness)?.contains(&eh) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     #[inline]
@@ -512,9 +515,9 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
         let mut result = HashSet::new();
         let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
         for unique_famous_witness in unique_famous_witnesses {
-            let self_ancestors = hashgraph.self_ancestors(unique_famous_witness).into_iter();
+            let self_ancestors = hashgraph.self_ancestors(unique_famous_witness)?.into_iter();
             for self_ancestor in self_ancestors {
-                let ancestors = hashgraph.ancestors(self_ancestor);
+                let ancestors = hashgraph.ancestors(self_ancestor)?;
                 let event = hashgraph.get(self_ancestor)?;
                 if ancestors.contains(&hash) && !event.is_self_parent(hash) {
                     result.insert(self_ancestor.clone());
@@ -808,17 +811,37 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
             let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
             remote_hg.difference(hashgraph.clone())
         };
+        let mut error: Option<Error> = None;
         diff.sort_by(|h1, h2| {
-            let h1_higher = remote_hg.higher(h1, h2);
-            let h2_higher = remote_hg.higher(h2, h1);
-            if h1_higher {
-                Ordering::Greater
-            } else if h2_higher {
-                Ordering::Less
-            } else {
-                Ordering::Equal
+            if error.is_some() {
+                return Ordering::Less;
+            }
+
+            match remote_hg.higher(h1, h2) {
+                Ok(h1_higher) => match remote_hg.higher(h2, h1) {
+                    Ok(h2_higher) => {
+                        if h1_higher {
+                            Ordering::Greater
+                        } else if h2_higher {
+                            Ordering::Less
+                        } else {
+                            Ordering::Equal
+                        }
+                    }
+                    Err(e) => {
+                        error = Some(e);
+                        Ordering::Less
+                    }
+                },
+                Err(e) => {
+                    error = Some(e);
+                    Ordering::Less
+                }
             }
         });
+        if error.is_some() {
+            return Err(error.unwrap());
+        }
         let mut res = Vec::with_capacity(diff.len());
         for eh in diff.clone().into_iter() {
             let is_valid_event = {

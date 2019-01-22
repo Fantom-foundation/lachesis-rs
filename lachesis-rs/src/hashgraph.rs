@@ -14,10 +14,10 @@ pub trait Hashgraph: Send + Sync {
     fn get_mut(&mut self, id: &EventHash) -> Result<&mut Event<ParentsPair>, Error>;
     fn get(&self, id: &EventHash) -> Result<&Event<ParentsPair>, Error>;
     fn insert(&mut self, hash: EventHash, event: Event<ParentsPair>);
-    fn ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
-    fn other_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
-    fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash>;
-    fn higher(&self, a: &EventHash, b: &EventHash) -> bool;
+    fn ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error>;
+    fn other_ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error>;
+    fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error>;
+    fn higher(&self, a: &EventHash, b: &EventHash) -> Result<bool, Error>;
     fn events_parents_can_see(&self, hash: &EventHash)
         -> Result<HashMap<PeerId, EventHash>, Error>;
     fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash>;
@@ -52,38 +52,41 @@ fn _get_ancestors<'a>(
     graph: &'a BTreeHashgraph,
     id: &'a EventHash,
     parent_pair_elem: ParentPairElem,
-) -> Vec<&'a EventHash> {
+) -> Result<Vec<&'a EventHash>, Error> {
     let mut prev = Some(id);
-    repeat_with(|| {
-        match prev {
-            Some(previous) => {
-                let send = Some(previous);
-                match graph.get(previous) {
-                    Ok(event) => {
-                        /*prev =*/
-                        match event.parents() {
-                            Some(ParentsPair(self_parent, other_parent)) => {
-                                Some(match parent_pair_elem {
-                                    ParentPairElem::OtherParent => other_parent,
-                                    ParentPairElem::SelfParent => self_parent,
-                                })
-                            }
-                            None => None,
-                        };
-                        send
-                    }
-                    Err(e) => {
-                        debug!(target: "swirlds", "{}", e);
-                        return None;
-                    }
+    let mut error: Option<Error> = None; // Store only most recent error
+    let v_eh: Vec<&EventHash> = repeat_with(|| {
+        if let Some(previous) = prev {
+            let send = Some(previous);
+            match graph.get(previous) {
+                Ok(event) => {
+                    prev = match event.parents() {
+                        Some(ParentsPair(self_parent, other_parent)) => {
+                            Some(match parent_pair_elem {
+                                ParentPairElem::OtherParent => other_parent,
+                                ParentPairElem::SelfParent => self_parent,
+                            })
+                        }
+                        None => None,
+                    };
+                    send
+                }
+                Err(e) => {
+                    error = Some(e);
+                    None
                 }
             }
-            None => None,
+        } else {
+            None
         }
     })
     .take_while(|e| e.is_some())
-    .map(|v| v.unwrap()) // This is safe because of the take_while
-    .collect()
+    .map(|v| v.unwrap()) // This is safe because of the `take_while`
+    .collect();
+    if error.is_some() {
+        return Err(error.unwrap());
+    }
+    Ok(v_eh)
 }
 
 impl Hashgraph for BTreeHashgraph {
@@ -103,33 +106,33 @@ impl Hashgraph for BTreeHashgraph {
         self.0.insert(hash, event);
     }
 
-    fn ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash> {
-        let mut other_ancestors = self.other_ancestors(id);
-        let self_ancestors = self.self_ancestors(id);
+    fn ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error> {
+        let mut other_ancestors = self.other_ancestors(id)?;
+        let self_ancestors = self.self_ancestors(id)?;
         other_ancestors.retain(|h| *h != id);
         other_ancestors.extend(self_ancestors.into_iter());
-        other_ancestors
+        Ok(other_ancestors)
     }
 
-    fn other_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash> {
+    fn other_ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error> {
         _get_ancestors(self, id, ParentPairElem::OtherParent)
     }
 
-    fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Vec<&'a EventHash> {
+    fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error> {
         _get_ancestors(self, id, ParentPairElem::SelfParent)
     }
 
     #[inline]
-    fn higher(&self, a: &EventHash, b: &EventHash) -> bool {
-        let a_self_ancestors = self.self_ancestors(a);
+    fn higher(&self, a: &EventHash, b: &EventHash) -> Result<bool, Error> {
+        let a_self_ancestors = self.self_ancestors(a)?;
         if a_self_ancestors.contains(&b) {
-            return true;
+            return Ok(true);
         }
-        let b_self_ancestors = self.self_ancestors(b);
+        let b_self_ancestors = self.self_ancestors(b)?;
         if b_self_ancestors.contains(&a) {
-            return false;
+            return Ok(false);
         }
-        a_self_ancestors.len() > b_self_ancestors.len()
+        Ok(a_self_ancestors.len() > b_self_ancestors.len())
     }
 
     #[inline]
@@ -148,7 +151,7 @@ impl Hashgraph for BTreeHashgraph {
                 for (k, other) in other_parent_event.can_see().into_iter() {
                     if result.contains_key(k) {
                         let value = (&result[k]).clone();
-                        if self.higher(other, &value) {
+                        if self.higher(other, &value)? {
                             result.insert(k.clone(), other.clone());
                         }
                     } else {
@@ -394,7 +397,7 @@ mod tests {
         hashgraph.insert(hash7.clone(), event7.clone());
         let mut expected = vec![&hash1, &hash3, &hash5, &hash7];
         expected.sort();
-        let mut actual = hashgraph.self_ancestors(&hash7);
+        let mut actual = hashgraph.self_ancestors(&hash7).unwrap();
         actual.sort();
         assert_eq!(expected, actual);
     }
@@ -437,7 +440,7 @@ mod tests {
         hashgraph.insert(hash7.clone(), event7.clone());
         let mut expected = vec![&hash1, &hash3, &hash5, &hash7];
         expected.sort();
-        let mut actual = hashgraph.other_ancestors(&hash7);
+        let mut actual = hashgraph.other_ancestors(&hash7).unwrap();
         actual.sort();
         assert_eq!(expected, actual);
     }
@@ -480,7 +483,7 @@ mod tests {
         hashgraph.insert(hash7.clone(), event7.clone());
         let mut expected = vec![&hash1, &hash3, &hash5, &hash6, &hash7];
         expected.sort();
-        let mut actual = hashgraph.ancestors(&hash7);
+        let mut actual = hashgraph.ancestors(&hash7).unwrap();
         actual.sort();
         assert_eq!(expected, actual);
     }
@@ -521,33 +524,35 @@ mod tests {
         hashgraph.insert(hash5.clone(), event5.clone());
         hashgraph.insert(hash6.clone(), event6.clone());
         hashgraph.insert(hash7.clone(), event7.clone());
-        assert!(!hashgraph.higher(&hash6, &hash7));
+        assert!(!hashgraph.higher(&hash6, &hash7).unwrap());
     }
 
     #[test]
     fn it_should_be_higher_if_its_child() {
-        let event1 = Event::new(vec![b"42".to_vec()], None, Vec::new());
+        let payloads = [b"42".to_vec(), b"fish".to_vec(), b"ford prefect".to_vec()];
+
+        let event1 = Event::new(vec![payloads[0].clone()], None, Vec::new());
         let hash1 = event1.hash().unwrap();
-        let event2 = Event::new(vec![b"fish".to_vec()], None, vec![1]);
+        let event2 = Event::new(vec![payloads[1].clone()], None, vec![1]);
         let hash2 = event2.hash().unwrap();
         let event3 = Event::new(
-            vec![b"ford prefect".to_vec()],
+            vec![payloads[2].clone()],
             Some(ParentsPair(hash2.clone(), hash1.clone())),
             Vec::new(),
         );
         let hash3 = event3.hash().unwrap();
-        let event4 = Event::new(vec![b"42".to_vec()], None, vec![1]);
+        let event4 = Event::new(vec![payloads[0].clone()], None, vec![1]);
         let hash4 = event4.hash().unwrap();
         let event5 = Event::new(
-            vec![b"ford prefect".to_vec()],
+            vec![payloads[2].clone()],
             Some(ParentsPair(hash4.clone(), hash3.clone())),
             Vec::new(),
         );
         let hash5 = event5.hash().unwrap();
-        let event6 = Event::new(vec![b"42".to_vec()], None, vec![2]);
+        let event6 = Event::new(vec![payloads[0].clone()], None, vec![2]);
         let hash6 = event6.hash().unwrap();
         let event7 = Event::new(
-            vec![b"ford prefect".to_vec()],
+            vec![payloads[2].clone()],
             Some(ParentsPair(hash6.clone(), hash5.clone())),
             Vec::new(),
         );
@@ -560,7 +565,7 @@ mod tests {
         hashgraph.insert(hash5.clone(), event5.clone());
         hashgraph.insert(hash6.clone(), event6.clone());
         hashgraph.insert(hash7.clone(), event7.clone());
-        assert!(hashgraph.higher(&hash7, &hash6));
+        assert!(hashgraph.higher(&hash7, &hash6).unwrap());
     }
 
     #[test]
@@ -599,7 +604,7 @@ mod tests {
         hashgraph.insert(hash5.clone(), event5.clone());
         hashgraph.insert(hash6.clone(), event6.clone());
         hashgraph.insert(hash7.clone(), event7.clone());
-        assert!(hashgraph.higher(&hash5, &hash6));
+        assert!(hashgraph.higher(&hash5, &hash6).unwrap());
     }
 
     #[test]
