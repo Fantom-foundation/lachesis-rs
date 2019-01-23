@@ -5,12 +5,14 @@ use actix::prelude::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub mod handlers;
 mod heartbeat;
+pub mod http_handler;
+pub mod ws_handler;
+pub mod ws_message;
 
-use self::handlers::{check_transaction_status, get_peers, heartbeat, submit_transaction};
 use self::heartbeat::Heartbeat;
-
+use self::http_handler::{check_transaction_status, get_peers, heartbeat, submit_transaction};
+use self::ws_handler::ws_index;
 pub struct Server;
 
 #[derive(Clone)]
@@ -37,7 +39,8 @@ impl Server {
             r.method(http::Method::GET).a(check_transaction_status)
         })
         .resource("/peer", |r| r.method(http::Method::GET).f(get_peers))
-        .resource("/heartbeat", |r| r.f(heartbeat))
+        .resource("/heartbeat", |r| r.method(http::Method::GET).f(heartbeat))
+        .resource("/ws", |r| r.method(http::Method::GET).f(ws_index))
     }
 
     pub fn init(
@@ -60,14 +63,16 @@ impl Server {
                 r.method(http::Method::GET).a(check_transaction_status)
             })
             .resource("/peer", |r| r.method(http::Method::GET).f(get_peers))
-            .resource("/heartbeat", |r| r.f(heartbeat))
+            .resource("/heartbeat", |r| r.method(http::Method::GET).f(heartbeat))
+            .resource("/ws", |r| r.method(http::Method::GET).f(ws_index))
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::handlers::SubmitTransaction;
+    use super::http_handler::SubmitTransaction;
+
     use super::*;
     use actix_web::test::TestServer;
     use actix_web::HttpMessage;
