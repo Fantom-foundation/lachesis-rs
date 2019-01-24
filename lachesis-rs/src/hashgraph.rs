@@ -19,13 +19,13 @@ pub trait Hashgraph: Send + Sync {
     fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error>;
     fn higher(&self, a: &EventHash, b: &EventHash) -> Result<bool, Error>;
     fn events_parents_can_see(&self, hash: &EventHash)
-        -> Result<HashMap<PeerId, EventHash>, Error>;
+                              -> Result<HashMap<PeerId, EventHash>, Error>;
     fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash>;
     fn is_valid_event(&self, event: &Event<ParentsPair>) -> Result<bool, Error>;
     fn contains_key(&self, id: &EventHash) -> bool;
     fn wire(&self) -> HashgraphWire;
     fn find_roots(&self) -> Vec<EventHash>;
-    fn find_self_child(&self, eh: &EventHash) -> Option<EventHash>;
+    fn find_self_child(&self, eh: &EventHash) -> Result<Option<EventHash>, Error>;
 }
 
 #[derive(Clone, Debug)]
@@ -80,9 +80,9 @@ fn _get_ancestors<'a>(
             None
         }
     })
-    .take_while(|e| e.is_some())
-    .map(|v| v.unwrap()) // This is safe because of the `take_while`
-    .collect();
+        .take_while(|e| e.is_some())
+        .map(|v| v.unwrap()) // This is safe because of the `take_while`
+        .collect();
     if error.is_some() {
         return Err(error.unwrap());
     }
@@ -206,8 +206,10 @@ impl Hashgraph for BTreeHashgraph {
             .collect()
     }
 
-    fn find_self_child(&self, eh: &EventHash) -> Option<EventHash> {
-        self.0
+    fn find_self_child(&self, eh: &EventHash) -> Result<Option<EventHash>, Error> {
+        let error: Option<Error> = None;
+        let r = self
+            .0
             .values()
             .find(|e| {
                 let e = *e;
@@ -216,7 +218,20 @@ impl Hashgraph for BTreeHashgraph {
                     None => false,
                 }
             })
-            .map(|e| e.hash().unwrap())
+            .map(|e| match e.hash() {
+                Ok(parents_pair) => Some(parents_pair),
+                Err(e) => {
+                    debug!(target: "hashgraph", "{}", e);
+                    None
+                }
+            });
+        if error.is_some() {
+            Err(error.unwrap())
+        } else if r.is_some() {
+            Ok(r.unwrap())
+        } else {
+            Err(format_err!("find_self_child() returned None"))
+        }
     }
 }
 

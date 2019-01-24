@@ -66,11 +66,23 @@ impl<P: Parents + Clone + Serialize> Event<P> {
     }
 
     #[inline]
-    pub fn is_self_parent(&self, hash: &EventHash) -> bool {
-        self.parents
+    pub fn is_self_parent(&self, hash: &EventHash) -> Result<bool, Error> {
+        let mut error: Option<Error> = None;
+        let r = self
+            .parents
             .clone()
-            .map(|p| p.self_parent().unwrap() == hash.clone())
-            .unwrap_or(false)
+            .map(|p| match p.self_parent() {
+                Ok(self_parent) => self_parent == hash.clone(),
+                Err(e) => {
+                    error = Some(e);
+                    false
+                }
+            })
+            .unwrap_or(false);
+        if error.is_some() {
+            return Err(error.unwrap());
+        }
+        Ok(r)
     }
 
     #[inline]
@@ -132,12 +144,37 @@ impl<P: Parents + Clone + Serialize> Event<P> {
 
     #[inline]
     pub fn self_parent(&self) -> Result<EventHash, Error> {
-        self.parents
-            .clone()
-            .map(|p| p.self_parent().unwrap())
-            .ok_or(Error::from(EventError::new(EventErrorType::NoSelfParent {
-                hash: self.hash()?,
-            })))
+        let mut error: Option<Error> = None;
+        match self.parents.clone().map(|p| match p.self_parent() {
+            Ok(sp) => Ok(sp),
+            Err(e) => {
+                debug!(target: "event", "{}", e);
+
+                let hash = match self.hash() {
+                    Ok(hash) => hash,
+                    Err(e) => {
+                        debug!(target: "hash", "{}", e);
+                        EventHash(vec![0, 1, 2])
+                    }
+                };
+                error = Some(Error::from(EventError::new(EventErrorType::NoSelfParent {
+                    hash: hash,
+                })));
+                Err(error)
+            }
+        }) { // TODO: Be DRY
+            Some(r) => match r {
+                Ok(res) => Ok(res),
+                Err(e) => match e {
+                    Some(er) => Err(er),
+                    None => Err(format_err!("self_parent() returned None"))
+                }
+            },
+            None => match error {
+                Some(e) => Err(e),
+                None => Err(format_err!("self_parent() returned None"))
+            }
+        }
     }
 
     #[inline]
@@ -188,7 +225,7 @@ proptest! {
         use ring::digest::{digest, SHA256};
         let event: Event<ParentsPair> = Event::new(Vec::new(), None, Vec::new());
         let hash = EventHash(digest(&SHA256, hash.as_bytes()).as_ref().to_vec());
-        assert!(!event.is_self_parent(&hash))
+        assert!(!event.is_self_parent(&hash).unwrap())
     }
 
     #[test]
@@ -199,8 +236,8 @@ proptest! {
         let other_parent = EventHash(digest(&SHA256, b"fish").as_ref().to_vec());
         let event = Event::new(Vec::new(), Some(ParentsPair(self_parent.clone(), other_parent)), Vec::new());
         let hash = EventHash(digest(&SHA256, p_try.as_bytes()).as_ref().to_vec());
-        assert!(event.is_self_parent(&self_parent));
-        assert_eq!(self_parent_hash == p_try, event.is_self_parent(&hash))
+        assert!(event.is_self_parent(&self_parent).unwrap());
+        assert_eq!(self_parent_hash == p_try, event.is_self_parent(&hash).unwrap())
     }
 
     #[test]

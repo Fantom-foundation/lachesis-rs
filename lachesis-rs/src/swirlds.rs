@@ -68,13 +68,14 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
         fn update_last_events<H: Hashgraph>(
             events: &mut BTreeMap<PeerId, Option<EventHash>>,
             h: &H,
-        ) {
+        ) -> Result<(), Error> {
             for (k, v) in events.clone() {
                 if let Some(v) = v {
-                    let self_child = h.find_self_child(&v);
+                    let self_child = h.find_self_child(&v)?;
                     events.insert(k.clone(), self_child);
                 }
             }
+            Ok(())
         }
 
         fn print_hashes(
@@ -519,7 +520,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
             for self_ancestor in self_ancestors {
                 let ancestors = hashgraph.ancestors(self_ancestor)?;
                 let event = hashgraph.get(self_ancestor)?;
-                if ancestors.contains(&hash) && !event.is_self_parent(hash) {
+                if ancestors.contains(&hash) && !event.is_self_parent(hash)? {
                     result.insert(self_ancestor.clone());
                 }
             }
