@@ -204,14 +204,13 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
                 Err(e) => {
                     error = Some(e);
                     None
-                },
+                }
             })
             .filter(|t1| t1.is_some() && t == t1.unwrap())
             .count();
         if error.is_some() {
-            return Err(error.unwrap())
-        }
-        else if d % H > 0 {
+            return Err(error.unwrap());
+        } else if d % H > 0 {
             if k > self.network.len() * 2 / 3 {
                 opera.set_consensus_time(hash, t)?;
             }

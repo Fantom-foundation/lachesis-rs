@@ -145,35 +145,38 @@ impl<P: Parents + Clone + Serialize> Event<P> {
     #[inline]
     pub fn self_parent(&self) -> Result<EventHash, Error> {
         let mut error: Option<Error> = None;
-        match self.parents.clone().map(|p| match p.self_parent() {
-            Ok(sp) => Ok(sp),
-            Err(e) => {
-                debug!(target: "event", "{}", e);
+        let none_error = format_err!("self_parent() returned None");
 
-                let hash = match self.hash() {
-                    Ok(hash) => hash,
-                    Err(e) => {
-                        debug!(target: "hash", "{}", e);
-                        EventHash(vec![0, 1, 2])
-                    }
-                };
-                error = Some(Error::from(EventError::new(EventErrorType::NoSelfParent {
-                    hash: hash,
-                })));
-                Err(error)
-            }
-        }) { // TODO: Be DRY
-            Some(r) => match r {
-                Ok(res) => Ok(res),
-                Err(e) => match e {
-                    Some(er) => Err(er),
-                    None => Err(format_err!("self_parent() returned None"))
+        match self
+            .parents
+            .clone()
+            .map(|p| match p.self_parent() {
+                Ok(sp) => Some(sp),
+                Err(e) => {
+                    debug!(target: "event", "{}", e);
+
+                    let hash: EventHash = match self.hash() {
+                        Ok(hash) => hash,
+                        Err(e) => {
+                            debug!(target: "hash", "{}", e);
+                            EventHash(vec![0, 1, 2])
+                        }
+                    };
+                    error = Some(Error::from(EventError::new(EventErrorType::NoSelfParent {
+                        hash: hash,
+                    })));
+                    None
                 }
-            },
-            None => match error {
-                Some(e) => Err(e),
-                None => Err(format_err!("self_parent() returned None"))
-            }
+            })
+            .filter(|p| p.is_some())
+            .unwrap()
+        {
+            Some(p) => Ok(p),
+            None => Err(if error.is_some() {
+                error.unwrap()
+            } else {
+                none_error
+            }),
         }
     }
 

@@ -19,7 +19,7 @@ pub trait Hashgraph: Send + Sync {
     fn self_ancestors<'a>(&'a self, id: &'a EventHash) -> Result<Vec<&'a EventHash>, Error>;
     fn higher(&self, a: &EventHash, b: &EventHash) -> Result<bool, Error>;
     fn events_parents_can_see(&self, hash: &EventHash)
-                              -> Result<HashMap<PeerId, EventHash>, Error>;
+        -> Result<HashMap<PeerId, EventHash>, Error>;
     fn difference<H: Hashgraph>(&self, g: H) -> Vec<EventHash>;
     fn is_valid_event(&self, event: &Event<ParentsPair>) -> Result<bool, Error>;
     fn contains_key(&self, id: &EventHash) -> bool;
@@ -80,9 +80,9 @@ fn _get_ancestors<'a>(
             None
         }
     })
-        .take_while(|e| e.is_some())
-        .map(|v| v.unwrap()) // This is safe because of the `take_while`
-        .collect();
+    .take_while(|e| e.is_some())
+    .map(|v| v.unwrap()) // This is safe because of the `take_while`
+    .collect();
     if error.is_some() {
         return Err(error.unwrap());
     }
