@@ -2,7 +2,7 @@ use actix_web::{
     http, middleware, server, App, AsyncResponder, Error, HttpMessage, HttpRequest, HttpResponse,
 };
 
-use futures::{future::result, Future, Stream};
+use futures::{future::result, Future};
 
 pub struct HttpServer;
 

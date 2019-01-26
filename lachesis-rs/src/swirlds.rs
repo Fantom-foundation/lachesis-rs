@@ -188,13 +188,20 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
         writeln!(f, "")?;
         let h = (*hashgraph).clone();
         print_rounds(f, &mut last_event_per_peer, &h)?;
-        update_last_events(&mut last_event_per_peer, &h);
+        match update_last_events(&mut last_event_per_peer, &h) {
+            Ok(_) => (),
+            Err(e) => debug!(target: "fmt::Debug::fmt::update_last_events", "{}", e)
+        }
         while num_of_some_in_map(&last_event_per_peer) > 0 {
             print_arrows(f, network.len() + 1)?;
             print_hashes(f, &mut last_event_per_peer)?;
             print_other_parents(f, &mut last_event_per_peer, &h)?;
             print_rounds(f, &mut last_event_per_peer, &h)?;
-            update_last_events(&mut last_event_per_peer, &h);
+            match update_last_events(&mut last_event_per_peer, &h) {
+                Ok(_) => (),
+                // TODO: Incorporate an ID for hashgraphs, so we can identify this error from above^
+                Err(e) => debug!(target: "fmt::Debug::fmt::update_last_events", "{}", e)
+            }
         }
         writeln!(f, "")?;
         writeln!(f, "")
@@ -1063,7 +1070,7 @@ mod tests {
             Some(ParentsPair(prev_head.clone(), prev_head.clone())),
             None,
         )
-        .unwrap();
+            .unwrap();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         assert_ne!(head, prev_head);
         let hashgraph = node.hashgraph.lock().unwrap();

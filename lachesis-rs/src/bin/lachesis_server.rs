@@ -1,12 +1,5 @@
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate json;
-
-use actix_web::{
-    error, http, middleware, server, App, AsyncResponder, Error, HttpMessage, HttpRequest,
-    HttpResponse, Json,
-};
+extern crate serde_derive;
 
 use lachesis_rs::HttpServer;
 
