@@ -190,7 +190,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
         print_rounds(f, &mut last_event_per_peer, &h)?;
         match update_last_events(&mut last_event_per_peer, &h) {
             Ok(_) => (),
-            Err(e) => debug!(target: "fmt::Debug::fmt::update_last_events", "{}", e)
+            Err(e) => debug!(target: "fmt::Debug::fmt::update_last_events", "{}", e),
         }
         while num_of_some_in_map(&last_event_per_peer) > 0 {
             print_arrows(f, network.len() + 1)?;
@@ -200,7 +200,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
             match update_last_events(&mut last_event_per_peer, &h) {
                 Ok(_) => (),
                 // TODO: Incorporate an ID for hashgraphs, so we can identify this error from above^
-                Err(e) => debug!(target: "fmt::Debug::fmt::update_last_events", "{}", e)
+                Err(e) => debug!(target: "fmt::Debug::fmt::update_last_events", "{}", e),
             }
         }
         writeln!(f, "")?;
@@ -926,7 +926,7 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
         round.iter().for_each(|r| event.set_round(r.clone()));
         let hash = event.hash()?;
         let signature = self.pk.sign(hash.as_ref());
-        event.sign(EventSignature(signature.as_ref().to_vec()));
+        event.sign(EventSignature::new(signature.as_ref()));
         self.add_event(event)?;
         let mut current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
         *current_head = Some(hash.clone());
@@ -999,7 +999,7 @@ mod tests {
 
     fn create_useless_peer(id: PeerId) -> Arc<Box<DummyPeer>> {
         let digest = digest(&SHA256, b"42");
-        let event = EventHash(digest.as_ref().to_vec());
+        let event = EventHash::new(digest.as_ref());
         Arc::new(Box::new(DummyPeer {
             hashgraph: BTreeHashgraph::new(),
             head: event,
@@ -1070,7 +1070,7 @@ mod tests {
             Some(ParentsPair(prev_head.clone(), prev_head.clone())),
             None,
         )
-            .unwrap();
+        .unwrap();
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         assert_ne!(head, prev_head);
         let hashgraph = node.hashgraph.lock().unwrap();
@@ -1102,7 +1102,7 @@ mod tests {
             hashgraph.get(&head).unwrap().clone()
         };
         use ring::digest::{digest, SHA256};
-        let real_hash = EventHash(digest(&SHA256, &vec![1]).as_ref().to_vec());
+        let real_hash = EventHash::new(digest(&SHA256, &vec![1]).as_ref());
         assert!(!node.is_valid_event(&real_hash, &event).unwrap());
     }
 
@@ -1117,7 +1117,7 @@ mod tests {
         );
         let hash = event.hash().unwrap();
         let signature = node.pk.sign(hash.as_ref()).as_ref().to_vec();
-        event.sign(EventSignature(signature));
+        event.sign(EventSignature::new(signature.as_ref()));
         node.add_event(event.clone()).unwrap();
         assert!(!node.is_valid_event(&hash, &event).unwrap());
     }
@@ -1153,7 +1153,7 @@ mod tests {
             (*mutex_guard).clone()
         };
         use ring::digest::{digest, SHA256};
-        let real_hash = EventHash(digest(&SHA256, &vec![1]).as_ref().to_vec());
+        let real_hash = EventHash::new(digest(&SHA256, &vec![1]).as_ref());
         node.maybe_change_head(real_hash.clone(), remote_hashgraph)
             .unwrap();
     }
