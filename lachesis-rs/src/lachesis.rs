@@ -219,12 +219,25 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
             let t = frame
                 .root_set
                 .iter()
-                .map(|h| opera.get_event(h).unwrap().lamport_timestamp)
+                .map(|h: &EventHash| -> Option<usize> {
+                    match opera.get_event(h) {
+                        Ok(event) => Some(event.lamport_timestamp),
+                        Err(e) => {
+                            error = Some(e);
+                            None
+                        }
+                    }
+                })
+                .filter(|h: &Option<usize>| h.is_some())
+                .map(|h: Option<usize>| h.unwrap())
                 .min()
                 .ok_or(Error::from(HashgraphError::new(
                     HashgraphErrorType::NoLamportTimeSet,
                 )))?;
             frame.set_clotho_time(root.clone(), t);
+        }
+        if error.is_some() {
+            return Err(error.unwrap());
         }
         Ok(())
     }
