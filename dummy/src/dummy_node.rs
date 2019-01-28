@@ -19,11 +19,13 @@ pub struct DummyNode {
 
 impl DummyNode {
     pub fn new(rng: &mut SystemRandom) -> Result<DummyNode, Error> {
-        let node = create_node(rng)?;
-        Ok(DummyNode {
-            id: node.get_id(),
-            node,
-        })
+        match create_node(rng) {
+            Ok(node) => Ok(DummyNode {
+                id: node.get_id(),
+                node,
+            }),
+            Err(e) => Err(e),
+        }
     }
 }
 

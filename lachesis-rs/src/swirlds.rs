@@ -101,11 +101,18 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
             write!(f, "        ")?;
             for peer in events.keys() {
                 if let Some(Some(ev)) = events.get(peer) {
-                    let ev = h.get(ev).unwrap();
-                    if let Some(ParentsPair(_, other_parent)) = ev.parents() {
-                        write!(f, "{}  ", other_parent.printable_hash())?;
-                    } else {
-                        write!(f, "          ")?;
+                    match h.get(ev) {
+                        Ok(ev) => {
+                            if let Some(ParentsPair(_, other_parent)) = ev.parents() {
+                                write!(f, "{}  ", other_parent.printable_hash())?;
+                            } else {
+                                write!(f, "          ")?;
+                            }
+                        }
+                        Err(e) => {
+                            debug!(target: "print_other_parents::h.get", "{}", e);
+                            write!(f, "          ")?;
+                        }
                     }
                 } else {
                     write!(f, "          ")?;
@@ -122,13 +129,21 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> fmt::Debug for Swirlds<P, H>
             write!(f, "        ")?;
             for peer in events.keys() {
                 if let Some(Some(ev)) = events.get(peer) {
-                    let ev = h.get(ev).unwrap();
-                    if let Some(round) = ev.maybe_round() {
-                        let r_string = format!("{}", round);
-                        let spaces = (0..(10 - r_string.len())).map(|_| " ").collect::<String>();
-                        write!(f, "{}{}", round, spaces)?;
-                    } else {
-                        write!(f, "          ")?;
+                    match h.get(ev) {
+                        Ok(ev) => {
+                            if let Some(round) = ev.maybe_round() {
+                                let r_string = format!("{}", round);
+                                let spaces =
+                                    (0..(10 - r_string.len())).map(|_| " ").collect::<String>();
+                                write!(f, "{}{}", round, spaces)?;
+                            } else {
+                                write!(f, "          ")?;
+                            }
+                        }
+                        Err(e) => {
+                            debug!(target: "print_rounds::h.get", "{}", e);
+                            write!(f, "          ")?;
+                        }
                     }
                 } else {
                     write!(f, "          ")?;

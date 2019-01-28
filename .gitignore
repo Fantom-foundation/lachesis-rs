@@ -8,3 +8,4 @@ Cargo.lock
 *.patch
 *~
 *.bak
+*.iml
