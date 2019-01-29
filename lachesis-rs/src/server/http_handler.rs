@@ -42,14 +42,14 @@ pub fn submit_transaction(
     req.json()
         .from_err()
         .and_then(|val: SubmitTransaction| {
-            println!("model: {:?}", val);
+            debug!("model: {:?}", val);
             Ok(HttpResponse::Ok().json(val)) // <- send response
         })
         .responder()
 }
 
 pub fn heartbeat(req: &HttpRequest<AppState>) -> HttpResponse {
-    println!("{:?}", req);
+    debug!("{:?}", req);
 
     *(req.state().counter.lock().unwrap()) += 1;
 
@@ -57,11 +57,11 @@ pub fn heartbeat(req: &HttpRequest<AppState>) -> HttpResponse {
 
     Arbiter::spawn(
         res.map(|res| match res {
-            Ok(result) => println!("Got result: {}", result),
-            Err(err) => println!("Got error: {}", err),
+            Ok(result) => info!("Got result: {}", result),
+            Err(err) => error!("Got error: {}", err),
         })
         .map_err(|e| {
-            println!("Actor is probably dead: {}", e);
+            debug!("Actor is probably dead: {}", e);
         }),
     );
 
@@ -74,14 +74,12 @@ pub fn heartbeat(req: &HttpRequest<AppState>) -> HttpResponse {
 pub fn check_transaction_status(
     req: &HttpRequest<AppState>,
 ) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    //TODO: implement get transaction status from id
-    let transaction_id = req.match_info().get("id").expect("no id provided");
+    let _transaction_id = req.match_info().get("id").expect("no id provided");
 
     result(Ok(HttpResponse::Ok().json(TransactionStatus::Failed))).responder()
 }
 
-pub fn get_peers(req: &HttpRequest<AppState>) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    //TODO: implement get list of peers
+pub fn get_peers(_req: &HttpRequest<AppState>) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let peers = vec![Peer {
         id: "wefwef".to_string(),
     }];

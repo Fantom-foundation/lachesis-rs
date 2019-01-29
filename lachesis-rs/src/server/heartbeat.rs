@@ -9,8 +9,7 @@ pub struct Heartbeat {
 }
 
 impl Heartbeat {
-    fn beat(&mut self, context: &mut Context<Self>) {
-        //        println!("{}", self.count);
+    fn beat(&mut self, _context: &mut Context<Self>) {
         self.count += 1;
     }
 }
@@ -34,7 +33,7 @@ impl Actor for Heartbeat {
 impl Handler<GetHeartbeatCount> for Heartbeat {
     type Result = Result<usize, io::Error>;
 
-    fn handle(&mut self, msg: GetHeartbeatCount, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: GetHeartbeatCount, _ctx: &mut Context<Self>) -> Self::Result {
         Ok(self.count)
     }
 }
