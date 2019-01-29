@@ -741,8 +741,14 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
     fn merge_hashgraph(&self, remote_hg: H) -> Result<Vec<EventHash>, Error> {
         let mut diff = {
             let hashgraph = get_from_mutex!(self.hashgraph, ResourceHashgraphPoisonError)?;
+            debug!("* self.hashgraph: {:?}", hashgraph);
             remote_hg.difference(hashgraph.clone())
         };
+        debug!(
+            "* [Node {:?}] diff: {:?}",
+            self.get_id().printable_hash(),
+            diff
+        );
         diff.sort_by(|h1, h2| {
             let h1_higher = remote_hg.higher(h1, h2);
             let h2_higher = remote_hg.higher(h2, h1);
@@ -755,13 +761,36 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
             }
         });
         let mut res = Vec::with_capacity(diff.len());
+        debug!(
+            "* [Node {:?}] diff.len: {:?}",
+            self.get_id().printable_hash(),
+            diff.len()
+        );
         for eh in diff.clone().into_iter() {
             let is_valid_event = {
                 let event = remote_hg.get(&eh)?;
                 self.is_valid_event(&eh, event)
-            }?;
+            }; //?;
+            let is_valid_event = match is_valid_event {
+                Ok(is_valid_event) => is_valid_event,
+                Err(error) => {
+                    error!(
+                        "[Node {:?}] error in checking is_valid_event: {:?}",
+                        self.get_id().printable_hash(),
+                        error
+                    );
+                    continue;
+                }
+            };
+            debug!(
+                "* Node {:?}] is event {:?} valid: {}",
+                self.get_id().printable_hash(),
+                eh,
+                is_valid_event
+            );
             if is_valid_event {
                 self.add_event(remote_hg.get(&eh)?.clone())?;
+                debug!("* adding event {:?}", eh);
                 res.push(eh);
             } else {
                 warn!(
@@ -771,6 +800,11 @@ impl<P: Peer<H>, H: Hashgraph + Clone + fmt::Debug> Swirlds<P, H> {
                 );
             }
         }
+        debug!(
+            "* [Node {:?}] merged hashgraph: {:?}",
+            self.get_id().printable_hash(),
+            res
+        );
         Ok(res)
     }
 

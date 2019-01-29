@@ -40,14 +40,17 @@ pub use crate::swirlds::Swirlds;
 #[cfg(test)]
 mod tests {
 
-    use crate::tcp_server::{TcpApp, TcpNode};
-    use crate::{Event, BTreeHashgraph};
     use crate::hashgraph::Hashgraph;
-    use std::env::args;
+    use crate::printable_hash::PrintableHash;
+    use crate::tcp_server::{TcpApp, TcpNode};
+    use crate::{BTreeHashgraph, Event};
+    //use std::env::args;
     use std::sync::Arc;
+    use std::thread::sleep;
+    use std::time::Duration;
 
     const BASE_PORT: usize = 9000;
-    const USAGE: &'static str = "Usage: tcp-client [number of nodes]";
+    //const USAGE: &'static str = "Usage: tcp-client [number of nodes]";
 
     use test::Bencher;
     //use rand::Rng;
@@ -55,7 +58,7 @@ mod tests {
     //use std::mem::replace;
 
     use crate::event::parents::ParentsPair;
-    use crate::peer::Peer;
+    //use crate::peer::Peer;
 
     fn test_hashgraph() -> BTreeHashgraph {
         let event1 = Event::new(vec![b"42".to_vec()], None, Vec::new());
@@ -95,18 +98,20 @@ mod tests {
         hashgraph
     }
 
-
     #[bench]
     fn setup_random_hashmap(b: &mut Bencher) {
-        let mut val : u32 = 0;
+        let mut val: u32 = 0;
         let mut rng = rand::thread_rng();
         let mut map = std::collections::HashMap::new();
 
-        b.iter(|| { map.insert(rng.gen::<u8>() as usize, val); val += 1; })
+        b.iter(|| {
+            map.insert(rng.gen::<u8>() as usize, val);
+            val += 1;
+        })
     }
 
     #[bench]
-    fn tcp(b: &mut Bencher)/* -> Option<Summary>*/ {
+    fn tcp(b: &mut Bencher) {
         env_logger::init();
         let mut rng = ring::rand::SystemRandom::new();
         let n_nodes = 4;
@@ -121,7 +126,6 @@ mod tests {
             for peer in nodes.iter() {
                 if peer.node.get_id() != node.node.get_id() {
                     node.node.add_node(peer.clone()).unwrap();
-
                 }
             }
         }
@@ -135,28 +139,41 @@ mod tests {
             handles.push(handle2);
         }
         println!("* nodes are started");
-        
+
         b.bench(|_| {
-            for node in nodes.iter() {
-                for peer in nodes.iter() {
-                    if peer.node.get_id() != node.node.get_id() {
-                        println!("*synch node");
-                        node.get_sync(peer.node.get_id(), Some(&test_hashgraph()) );
-                    }
+            nodes[0]
+                .node
+                .sync(nodes[0].node.get_head().unwrap(), test_hashgraph());
+            //            for node in nodes.iter() {
+            //                for peer in nodes.iter() {
+            //                    if peer.node.get_id() != node.node.get_id() {
+            //                        println!("*synch node");
+            //                        node.get_sync(peer.node.get_id(), Some(&test_hashgraph()));
+            //                   }
+            //                }
+            //            }
+
+            let mut not_done = true;
+            while not_done {
+                not_done = false;
+                for node in nodes.iter() {
+                    println!("* hashgraph {:?}", node.node.get_hashgraph());
+                    let node_id = node.node.get_id().printable_hash();
+                    let (n_rounds, n_events) = node.node.get_stats().unwrap();
+                    not_done = not_done || (n_events > 0);
+                    println!(
+                        "* node {:?} stats: rounds:{:?}; pending events:{:?}",
+                        node_id, n_rounds, n_events
+                    );
                 }
+                sleep(Duration::from_millis(100));
             }
         });
-
-        for node in nodes.iter() {
-            println!("* hashgraph {:?}", node.node.get_hashgraph());
-            println!("* stats {:?}", node.node.get_stats());
-       }
 
         println!("* handling for nodes is on");
 
         for handle in handles {
             handle.join().unwrap();
         }
-
     }
 }
