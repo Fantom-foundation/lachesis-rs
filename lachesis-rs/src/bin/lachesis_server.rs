@@ -6,8 +6,9 @@ fn main() {
 
     let sys = actix::System::new("heartbeat-example");
 
-    Server::start();
+    let host = "127.0.0.1:8080";
+    Server::init().bind(host).unwrap().start();
 
-    println!("Started http server: 127.0.0.1:8080");
+    println!("Started http server: {}", host);
     let _ = sys.run();
 }

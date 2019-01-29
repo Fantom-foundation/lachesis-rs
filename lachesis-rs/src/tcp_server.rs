@@ -4,6 +4,7 @@ use crate::node::Node;
 use crate::peer::{Peer, PeerId};
 use crate::swirlds::Swirlds;
 use bincode::serialize;
+use failure::Error;
 use ring::rand::SystemRandom;
 use ring::signature;
 use std::io::{Read, Write};
@@ -12,11 +13,11 @@ use std::sync::Arc;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::Duration;
 
-fn create_node(rng: &mut SystemRandom) -> Swirlds<TcpNode, BTreeHashgraph> {
+fn create_node(rng: &mut SystemRandom) -> Result<Swirlds<TcpNode, BTreeHashgraph>, Error> {
     let hashgraph = BTreeHashgraph::new();
-    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng).unwrap();
-    let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes)).unwrap();
-    Swirlds::new(kp, hashgraph).unwrap()
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng)?;
+    let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes))?;
+    Swirlds::new(kp, hashgraph)
 }
 
 pub struct TcpNode {
@@ -26,29 +27,33 @@ pub struct TcpNode {
 }
 
 impl TcpNode {
-    pub fn new(rng: &mut SystemRandom, access_address: String) -> TcpNode {
-        let node = create_node(rng);
+    pub fn new(rng: &mut SystemRandom, access_address: String) -> Result<TcpNode, Error> {
+        let node = create_node(rng)?;
         let id = node.get_id();
-        TcpNode {
+        Ok(TcpNode {
             access_address,
             id,
             node,
-        }
+        })
     }
 }
 
 impl Peer<BTreeHashgraph> for TcpNode {
-    fn get_sync(&self, pk: PeerId, _k: Option<&BTreeHashgraph>) -> (EventHash, BTreeHashgraph) {
-        let peer = self.node.get_peer(&pk).unwrap();
+    fn get_sync(
+        &self,
+        pk: PeerId,
+        _k: Option<&BTreeHashgraph>,
+    ) -> Result<(EventHash, BTreeHashgraph), Error> {
+        let peer = self.node.get_peer(&pk)?;
         let mut buffer = Vec::new();
-        let mut stream = TcpStream::connect(&peer.access_address).unwrap();
+        let mut stream = TcpStream::connect(&peer.access_address)?;
         let mut last_received = 0;
         while last_received == 0 {
-            last_received = stream.read_to_end(&mut buffer).unwrap();
+            last_received = stream.read_to_end(&mut buffer)?;
         }
-        let (eh, wire): (EventHash, HashgraphWire) = bincode::deserialize(&buffer).unwrap();
+        let (eh, wire): (EventHash, HashgraphWire) = bincode::deserialize(&buffer)?;
         let hashgraph = BTreeHashgraph::from(wire);
-        (eh, hashgraph)
+        Ok((eh, hashgraph))
     }
     fn id(&self) -> &PeerId {
         &self.id
@@ -62,7 +67,7 @@ impl TcpApp {
         TcpApp(n)
     }
 
-    pub fn run(self) -> (JoinHandle<()>, JoinHandle<()>) {
+    pub fn run(self) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
         let answer_thread_node = self.0.clone();
         let sync_thread_node = self.0.clone();
         let answer_handle = spawn(move || {
@@ -96,6 +101,6 @@ impl TcpApp {
                 sleep(Duration::from_millis(100));
             }
         });
-        (answer_handle, sync_handle)
+        Ok((answer_handle, sync_handle))
     }
 }

@@ -4,17 +4,21 @@
 extern crate log;
 
 mod dummy_node;
-use self::dummy_node::DummyNode;
-use lachesis_rs::Node;
-use rand;
+
 use std::env::args;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use failure::Error;
+use rand;
+
+use self::dummy_node::DummyNode;
+use lachesis_rs::Node;
+
 const USAGE: &'static str = "Usage: dummy [number of nodes]";
 
-fn create_node(rng: &mut ring::rand::SystemRandom) -> DummyNode {
+fn create_node(rng: &mut ring::rand::SystemRandom) -> Result<DummyNode, Error> {
     DummyNode::new(rng)
 }
 
@@ -59,8 +63,13 @@ fn main() {
     let n_nodes = args[1].parse::<usize>().unwrap();
     let mut nodes = Vec::with_capacity(n_nodes);
     for _ in 0..n_nodes {
-        nodes.push(Arc::new(Box::new(create_node(&mut rng))));
+        match create_node(&mut rng) {
+            Ok(node) => nodes.push(Arc::new(Box::new(node))),
+            Err(e) => panic!(e),
+        }
     }
+    let mut handles = Vec::with_capacity(n_nodes * 2);
+
     for node in nodes.iter() {
         for peer in nodes.iter() {
             if peer.node.get_id() != node.node.get_id() {
@@ -68,7 +77,7 @@ fn main() {
             }
         }
     }
-    let mut handles = Vec::with_capacity(n_nodes * 2);
+
     for node in nodes.iter() {
         let (handle1, handle2) = spawn_node(node);
         handles.push(handle1);
