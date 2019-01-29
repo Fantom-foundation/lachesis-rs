@@ -118,7 +118,7 @@ mod tests {
         let mut nodes = Vec::with_capacity(n_nodes);
         for i in 0..n_nodes {
             let a = format!("0.0.0.0:{}", BASE_PORT + i);
-            nodes.push(Arc::new(Box::new(TcpNode::new(&mut rng, a))));
+            nodes.push(Arc::new(Box::new(TcpNode::new(&mut rng, a).unwrap())));
         }
         println!("* nodes are created");
 
@@ -134,7 +134,7 @@ mod tests {
         let mut handles = Vec::with_capacity(n_nodes * 2);
         for node in nodes.iter() {
             let app = TcpApp(node.clone());
-            let (handle1, handle2) = app.run();
+            let (handle1, handle2) = app.run().unwrap();
             handles.push(handle1);
             handles.push(handle2);
         }
