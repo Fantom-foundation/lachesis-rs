@@ -2,6 +2,7 @@ use crate::event::event_hash::EventHash;
 use crate::peer::PeerId;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct Round {
     pub id: usize,
     witnesses: HashMap<PeerId, EventHash>,

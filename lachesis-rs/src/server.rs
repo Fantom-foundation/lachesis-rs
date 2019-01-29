@@ -10,6 +10,7 @@ mod heartbeat;
 
 use self::handlers::{check_transaction_status, get_peers, heartbeat, submit_transaction};
 use self::heartbeat::Heartbeat;
+
 pub struct Server;
 
 #[derive(Clone)]
@@ -39,12 +40,14 @@ impl Server {
         .resource("/heartbeat", |r| r.f(heartbeat))
     }
 
-    pub fn start() {
-        let counter = Arc::new(Mutex::new(0));
+    pub fn init(
+    ) -> server::HttpServer<App<AppState>, impl Fn() -> App<AppState> + Send + Clone + 'static>
+    {
+        let counter: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
-        let addr = Arbiter::start(move |_| Heartbeat { count: 0 });
+        let addr: Addr<Heartbeat> = Arbiter::start(move |_| Heartbeat { count: 0 });
 
-        server::new(move || {
+        server::new(move || -> App<AppState> {
             App::with_state(AppState {
                 counter: counter.clone(),
                 heartbeat_counter: addr.clone(),
@@ -59,15 +62,11 @@ impl Server {
             .resource("/peer", |r| r.method(http::Method::GET).f(get_peers))
             .resource("/heartbeat", |r| r.f(heartbeat))
         })
-        .bind("127.0.0.1:8080")
-        .unwrap()
-        .start();
     }
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::handlers::SubmitTransaction;
     use super::*;
     use actix_web::test::TestServer;
@@ -113,5 +112,4 @@ mod tests {
         println!("{:?}", response.body().wait());
         assert!(response.status().is_success());
     }
-
 }

@@ -2,6 +2,7 @@ use crate::event::event_hash::EventHash;
 use crate::failure::Backtrace;
 use crate::peer::PeerId;
 use crate::printable_hash::PrintableHash;
+
 use std::fmt;
 use std::sync::PoisonError;
 
@@ -48,7 +49,7 @@ impl NodeError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub(crate) enum EventErrorType {
     UnsignedEvent { hash: EventHash },
     RoundNotSet { hash: EventHash },

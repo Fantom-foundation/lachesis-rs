@@ -18,6 +18,7 @@ use std::sync::Mutex;
 pub mod frame;
 pub mod opera;
 pub mod parents_list;
+
 use self::frame::Frame;
 use self::opera::OperaWire;
 use self::parents_list::ParentsList;
@@ -74,7 +75,7 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         let mut parent_hashes = vec![];
         let peer_id = self.pk.public_key_bytes().to_vec();
         for p in peers {
-            let (h, new_events) = p.get_sync(peer_id.clone(), Some(&opera));
+            let (h, new_events) = p.get_sync(peer_id.clone(), Some(&opera))?;
             opera.sync(new_events);
             parent_hashes.push(h);
         }
@@ -119,11 +120,25 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         root: &EventHash,
     ) -> Result<usize, Error> {
         let opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
-        Ok(current_frame
+        let mut error: Option<Error> = None;
+
+        let count = current_frame
             .root_set
             .iter()
-            .filter(|eh| opera.can_see(*eh, root).unwrap())
-            .count())
+            .map(|eh| match opera.can_see(&*eh, root) {
+                Ok(seen) => Some(seen),
+                Err(e) => {
+                    error = Some(e);
+                    None
+                }
+            })
+            .filter(|eh| eh.is_some())
+            .map(|eh| eh.unwrap())
+            .count();
+        if error.is_some() {
+            return Err(error.unwrap());
+        }
+        Ok(count)
     }
 
     fn set_clotho(&self, root: &EventHash) -> Result<(), Error> {
@@ -178,13 +193,24 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
         let frame: &mut Frame = &mut frames[previous_frame];
         let t = self.clotho_time_reselection(frame.root_set.clone())?;
         let mut opera = get_from_mutex!(self.opera, ResourceHashgraphPoisonError)?;
+
+        let mut error: Option<Error> = None;
+
         let k = frame
             .root_set
             .iter()
-            .map(|h| opera.get_event(h).unwrap().lamport_timestamp)
-            .filter(|t1| t == *t1)
+            .map(|h| match opera.get_event(h) {
+                Ok(event) => Some(event.lamport_timestamp),
+                Err(e) => {
+                    error = Some(e);
+                    None
+                }
+            })
+            .filter(|t1| t1.is_some() && t == t1.unwrap())
             .count();
-        if d % H > 0 {
+        if error.is_some() {
+            return Err(error.unwrap());
+        } else if d % H > 0 {
             if k > self.network.len() * 2 / 3 {
                 opera.set_consensus_time(hash, t)?;
             }
@@ -193,12 +219,25 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
             let t = frame
                 .root_set
                 .iter()
-                .map(|h| opera.get_event(h).unwrap().lamport_timestamp)
+                .map(|h: &EventHash| -> Option<usize> {
+                    match opera.get_event(h) {
+                        Ok(event) => Some(event.lamport_timestamp),
+                        Err(e) => {
+                            error = Some(e);
+                            None
+                        }
+                    }
+                })
+                .filter(|h: &Option<usize>| h.is_some())
+                .map(|h: Option<usize>| h.unwrap())
                 .min()
                 .ok_or(Error::from(HashgraphError::new(
                     HashgraphErrorType::NoLamportTimeSet,
                 )))?;
             frame.set_clotho_time(root.clone(), t);
+        }
+        if error.is_some() {
+            return Err(error.unwrap());
         }
         Ok(())
     }
@@ -292,6 +331,9 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
             }
             None => opera.wire(),
         };
-        Ok((head.clone().unwrap(), resp))
+        match head.clone() {
+            Some(cloned_head) => Ok((cloned_head, resp)),
+            None => Err(format_err!("head.clone() returned None")),
+        }
     }
 }

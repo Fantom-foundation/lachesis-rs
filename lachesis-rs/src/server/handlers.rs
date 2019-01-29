@@ -1,4 +1,4 @@
-use actix_web::{http, AsyncResponder, Error, HttpMessage, HttpRequest, HttpResponse};
+use actix_web::{AsyncResponder, Error, HttpMessage, HttpRequest, HttpResponse};
 
 use futures::{future::result, Future};
 

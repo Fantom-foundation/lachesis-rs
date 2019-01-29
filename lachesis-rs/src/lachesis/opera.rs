@@ -166,7 +166,12 @@ impl Opera {
         let diff_keys = local_keys
             .into_iter()
             .filter(|k| !remote_keys.contains(k))
-            .map(|k| (k.clone(), self.graph.get(k).unwrap().clone()))
+            .map(|k| match self.graph.get(k) {
+                Some(graph_at_k) => Some((k.clone(), graph_at_k.clone())),
+                None => None,
+            })
+            .filter(|k| k.is_some())
+            .map(|k| k.unwrap())
             .collect();
         OperaWire {
             graph: diff_keys,
@@ -197,8 +202,15 @@ impl Opera {
                 let mut base = p.0.clone();
                 let mut prev =
                     p.0.iter()
-                        .map(|ph| self.get_ancestors(ph).unwrap())
-                        .map(|v| v.into_iter())
+                        .map(|ph| match self.get_ancestors(ph) {
+                            Ok(ancestors) => Some(ancestors),
+                            Err(e) => {
+                                debug!(target: "swirlds", "{}", e);
+                                return None;
+                            }
+                        })
+                        .filter(|ph| ph.is_some())
+                        .map(|v| v.unwrap().into_iter())
                         .flatten()
                         .collect();
                 base.append(&mut prev);
