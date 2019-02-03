@@ -95,6 +95,11 @@ impl<P: Parents + Clone + Serialize> Event<P> {
     }
 
     #[inline]
+    pub fn payload(&self) -> Vec<Vec<u8>> {
+        self.payload.clone()
+    }
+
+    #[inline]
     pub fn famous(&mut self, famous: bool) {
         self.famous = Some(famous)
     }

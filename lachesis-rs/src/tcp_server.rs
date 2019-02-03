@@ -13,40 +13,42 @@ use std::sync::Arc;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::Duration;
 
-fn create_node(rng: &mut SystemRandom) -> Result<Swirlds<TcpNode, BTreeHashgraph>, Error> {
+fn create_swirlds_node(rng: &mut SystemRandom) -> Result<Swirlds<TcpPeer, BTreeHashgraph>, Error> {
     let hashgraph = BTreeHashgraph::new();
     let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng)?;
     let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes))?;
     Swirlds::new(kp, hashgraph)
 }
 
-pub struct TcpNode {
-    id: PeerId,
-    pub access_address: String,
-    pub node: Swirlds<TcpNode, BTreeHashgraph>,
+pub struct TcpNode<N: Node> {
+    pub address: String,
+    pub node: N,
 }
 
-impl TcpNode {
-    pub fn new(rng: &mut SystemRandom, access_address: String) -> Result<TcpNode, Error> {
-        let node = create_node(rng)?;
-        let id = node.get_id();
-        Ok(TcpNode {
-            access_address,
-            id,
-            node,
-        })
+impl TcpNode<Swirlds<TcpPeer, BTreeHashgraph>> {
+    pub fn new(
+        rng: &mut SystemRandom,
+        address: String,
+    ) -> Result<TcpNode<Swirlds<TcpPeer, BTreeHashgraph>>, Error> {
+        let node = create_swirlds_node(rng)?;
+        Ok(TcpNode { address, node })
     }
 }
 
-impl Peer<BTreeHashgraph> for TcpNode {
+#[derive(Clone)]
+pub struct TcpPeer {
+    pub address: String,
+    pub id: PeerId,
+}
+
+impl Peer<BTreeHashgraph> for TcpPeer {
     fn get_sync(
         &self,
-        pk: PeerId,
+        _pk: PeerId,
         _k: Option<&BTreeHashgraph>,
     ) -> Result<(EventHash, BTreeHashgraph), Error> {
-        let peer = self.node.get_peer(&pk)?;
         let mut buffer = Vec::new();
-        let mut stream = TcpStream::connect(&peer.access_address)?;
+        let mut stream = TcpStream::connect(&self.address())?;
         let mut last_received = 0;
         while last_received == 0 {
             last_received = stream.read_to_end(&mut buffer)?;
@@ -55,15 +57,18 @@ impl Peer<BTreeHashgraph> for TcpNode {
         let hashgraph = BTreeHashgraph::from(wire);
         Ok((eh, hashgraph))
     }
+    fn address(&self) -> String {
+        self.address.clone()
+    }
     fn id(&self) -> &PeerId {
         &self.id
     }
 }
 
-pub struct TcpApp(pub Arc<Box<TcpNode>>);
+pub struct TcpApp(Arc<TcpNode<Swirlds<TcpPeer, BTreeHashgraph>>>);
 
 impl TcpApp {
-    pub fn new(n: Arc<Box<TcpNode>>) -> TcpApp {
+    pub fn new(n: Arc<TcpNode<Swirlds<TcpPeer, BTreeHashgraph>>>) -> TcpApp {
         TcpApp(n)
     }
 
@@ -71,7 +76,7 @@ impl TcpApp {
         let answer_thread_node = self.0.clone();
         let sync_thread_node = self.0.clone();
         let answer_handle = spawn(move || {
-            let listener = TcpListener::bind(&answer_thread_node.access_address).unwrap();
+            let listener = TcpListener::bind(&answer_thread_node.address).unwrap();
             for stream_result in listener.incoming() {
                 let mut stream = stream_result.unwrap();
                 let message = answer_thread_node.node.respond_message(None).unwrap();

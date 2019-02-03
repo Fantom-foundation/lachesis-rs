@@ -2,6 +2,7 @@
 
 members = [
     "dummy",
+    "kvdb",
     "lachesis-rs",
     "fal",
 ]

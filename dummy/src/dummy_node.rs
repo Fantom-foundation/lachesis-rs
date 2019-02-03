@@ -39,6 +39,9 @@ impl Peer<BTreeHashgraph> for DummyNode {
         let hashgraph = BTreeHashgraph::from(wire);
         Ok((eh, hashgraph))
     }
+    fn address(&self) -> String {
+        String::from(String::from_utf8_lossy(&self.id))
+    }
     fn id(&self) -> &PeerId {
         &self.id
     }

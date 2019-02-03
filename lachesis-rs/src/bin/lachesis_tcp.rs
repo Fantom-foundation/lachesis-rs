@@ -1,6 +1,7 @@
 extern crate lachesis_rs;
 
-use lachesis_rs::tcp_server::{TcpApp, TcpNode};
+use lachesis_rs::tcp_server::{TcpApp, TcpNode, TcpPeer};
+use lachesis_rs::Peer;
 use std::env::args;
 use std::sync::Arc;
 
@@ -16,20 +17,26 @@ fn main() {
     let mut rng = ring::rand::SystemRandom::new();
     let n_nodes = args[1].parse::<usize>().unwrap();
     let mut nodes = Vec::with_capacity(n_nodes);
+    let mut peers = Vec::with_capacity(n_nodes);
     for i in 0..n_nodes {
         let a = format!("0.0.0.0:{}", BASE_PORT + i);
-        nodes.push(Arc::new(Box::new(TcpNode::new(&mut rng, a).unwrap())));
+        let node = TcpNode::new(&mut rng, a.clone()).unwrap();
+        peers.push(TcpPeer {
+            address: a,
+            id: node.node.get_id().clone(),
+        });
+        nodes.push(Arc::new(node));
     }
     for node in nodes.iter() {
-        for peer in nodes.iter() {
-            if peer.node.get_id() != node.node.get_id() {
-                node.node.add_node(peer.clone()).unwrap();
+        for peer in peers.iter() {
+            if peer.id().clone() != node.node.get_id() {
+                node.node.add_node(Arc::new(peer.clone())).unwrap();
             }
         }
     }
     let mut handles = Vec::with_capacity(n_nodes * 2);
-    for node in nodes.iter() {
-        let app = TcpApp(node.clone());
+    for node in nodes {
+        let app = TcpApp::new(node.clone());
         let (handle1, handle2) = app.run().unwrap();
         handles.push(handle1);
         handles.push(handle2);

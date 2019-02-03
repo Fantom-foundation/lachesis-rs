@@ -312,6 +312,7 @@ impl<P: Peer<Opera> + Clone> Lachesis<P> {
 
 impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
     type D = OperaWire;
+    type P = ParentsList;
     fn run<R: Rng>(&self, rng: &mut R) -> Result<(), Error> {
         self.sync(rng)?;
         self.root_selection()?;
@@ -335,5 +336,13 @@ impl<P: Peer<Opera> + Clone> Node for Lachesis<P> {
             Some(cloned_head) => Ok((cloned_head, resp)),
             None => Err(format_err!("head.clone() returned None")),
         }
+    }
+
+    fn add_transaction(&self, _msg: Vec<u8>) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn get_ordered_events(&self) -> Result<Vec<Event<ParentsList>>, Error> {
+        Ok(Vec::new())
     }
 }
