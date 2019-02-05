@@ -5,4 +5,5 @@ members = [
     "kvdb",
     "lachesis-rs",
     "fal",
+    "vm",
 ]
