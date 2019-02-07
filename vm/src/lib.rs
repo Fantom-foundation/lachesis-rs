@@ -13,9 +13,11 @@ Each stack frame has its own set of 256 registers.
         | mov <Reg> <Val>
         | ineg <Reg>
         | iadd <Reg> <Val>
+        | isub <Reg> <Val>
         | add <Reg> <Val>
         | sub <Reg> <Val>
-        | mul <Reg> <Val>
+        | umul <Reg> <Val>
+        | smul <Reg> <Val>
         | urem <Reg> <Val>
         | srem <Reg> <Val>
         | udiv <Reg> <Val>
@@ -100,6 +102,10 @@ pub enum Instruction {
         register: u8,
         value: Value,
     },
+    Isub {
+        register: u8,
+        value: Value,
+    },
     Add {
         register: u8,
         value: Value,
@@ -108,7 +114,11 @@ pub enum Instruction {
         register: u8,
         value: Value,
     },
-    Mul {
+    Umul {
+        register: u8,
+        value: Value,
+    },
+    Smul {
         register: u8,
         value: Value,
     },
@@ -281,8 +291,25 @@ pub enum Instruction {
     },
 }
 
+macro_rules! parse_instruction_with_register {
+    ($instr: ident, $stream: expr) => {
+        Instruction::$instr {
+            register: Instruction::parse_register($stream)?,
+        }
+    };
+}
+
+macro_rules! parse_instruction_from_register_to_register {
+    ($instr: ident, $stream: expr) => {
+        Instruction::$instr {
+            source: Instruction::parse_register($stream)?,
+            destiny: Instruction::parse_register($stream)?,
+        }
+    };
+}
+
 macro_rules! parse_instruction_from_register_to_value {
-    ($instr: ident, $stream: ident) => {
+    ($instr: ident, $stream: expr) => {
         Instruction::$instr {
             value: Instruction::parse_value($stream)?,
             register: Instruction::parse_register($stream)?,
@@ -291,7 +318,7 @@ macro_rules! parse_instruction_from_register_to_value {
 }
 
 macro_rules! parse_instruction_with_string_and_register {
-    ($instr: ident, $stream: ident) => {
+    ($instr: ident, $stream: expr) => {
         Instruction::$instr {
             string: Instruction::parse_string($stream)?,
             register: Instruction::parse_register($stream)?,
@@ -305,22 +332,6 @@ impl Instruction {
         let args = Instruction::parse_u64(stream)?;
         let skip = Instruction::parse_u64(stream)?;
         Ok(Instruction::Fd { name, args, skip })
-    }
-
-    fn parse_mov(stream: &mut Iterator<Item = u8>) -> Result<Instruction, Error> {
-        Ok(parse_instruction_from_register_to_value!(Mov, stream))
-    }
-
-    fn parse_gg(stream: &mut Iterator<Item = u8>) -> Result<Instruction, Error> {
-        Ok(parse_instruction_with_string_and_register!(Gg, stream))
-    }
-
-    fn parse_sg(stream: &mut Iterator<Item = u8>) -> Result<Instruction, Error> {
-        Ok(parse_instruction_with_string_and_register!(Sg, stream))
-    }
-
-    fn parse_css(stream: &mut Iterator<Item = u8>) -> Result<Instruction, Error> {
-        Ok(parse_instruction_with_string_and_register!(Css, stream))
     }
 
     fn parse_string(stream: &mut Iterator<Item = u8>) -> Result<String, Error> {
@@ -387,67 +398,62 @@ pub enum ParsingError {
 impl TryFrom<Vec<u8>> for Program {
     type Error = Error;
     fn try_from(instructions: Vec<u8>) -> Result<Program, Error> {
-        let mut peekable = instructions.into_iter();
+        let mut source = instructions.into_iter();
         let mut instructions = Vec::new();
-        let mut next = peekable.next();
+        let mut next = source.next();
         while next.is_some() {
             let byte = next.expect("can't happen");
             let instruction = match byte {
-                0x00 => Instruction::parse_fd(&mut peekable),
-                0x01 => Instruction::parse_mov(&mut peekable),
-                0x02 => Instruction::parse_gg(&mut peekable),
-                0x03 => Instruction::parse_sg(&mut peekable),
-                0x04 => Instruction::parse_css(&mut peekable),
+                0x00 => Instruction::parse_fd(&mut source),
+                0x01 => Ok(parse_instruction_from_register_to_value!(Mov, &mut source)),
+                0x02 => Ok(parse_instruction_with_string_and_register!(Gg, &mut source)),
+                0x03 => Ok(parse_instruction_with_string_and_register!(Sg, &mut source)),
+                0x04 => Ok(parse_instruction_with_string_and_register!(Css, &mut source)),
+                0x05 => Ok(parse_instruction_from_register_to_value!(Ld8, &mut source)),
+                0x06 => Ok(parse_instruction_from_register_to_value!(Ld16, &mut source)),
+                0x07 => Ok(parse_instruction_from_register_to_value!(Ld32, &mut source)),
+                0x08 => Ok(parse_instruction_from_register_to_value!(Ld64, &mut source)),
+                0x09 => Ok(parse_instruction_from_register_to_value!(St8, &mut source)),
+                0x0a => Ok(parse_instruction_from_register_to_value!(St16, &mut source)),
+                0x0b => Ok(parse_instruction_from_register_to_value!(St32, &mut source)),
+                0x0c => Ok(parse_instruction_from_register_to_value!(St64, &mut source)),
+                0x0d => Ok(parse_instruction_from_register_to_register!(Lea, &mut source)),
+                0x0e => Ok(parse_instruction_from_register_to_value!(Iadd, &mut source)),
+                0x0f => Ok(parse_instruction_from_register_to_value!(Isub, &mut source)),
+                0x10 => Ok(parse_instruction_from_register_to_value!(Smul, &mut source)),
+                0x11 => Ok(parse_instruction_from_register_to_value!(Umul, &mut source)),
+                0x12 => Ok(parse_instruction_from_register_to_value!(Srem, &mut source)),
+                0x13 => Ok(parse_instruction_from_register_to_value!(Urem, &mut source)),
+                0x14 => Ok(parse_instruction_from_register_to_value!(Sdiv, &mut source)),
+                0x15 => Ok(parse_instruction_from_register_to_value!(Udiv, &mut source)),
+                0x16 => Ok(parse_instruction_from_register_to_value!(And, &mut source)),
+                0x17 => Ok(parse_instruction_from_register_to_value!(Or, &mut source)),
+                0x18 => Ok(parse_instruction_from_register_to_value!(Xor, &mut source)),
+                0x19 => Ok(parse_instruction_from_register_to_value!(Shl, &mut source)),
+                0x1a => Ok(parse_instruction_from_register_to_value!(Lshr, &mut source)),
+                0x1b => Ok(parse_instruction_from_register_to_value!(Ashr, &mut source)),
+                0x1c => Ok(parse_instruction_with_register!(Ineg, &mut source)),
+                0x1d => Ok(parse_instruction_from_register_to_value!(Fadd, &mut source)),
+                0x1e => Ok(parse_instruction_from_register_to_value!(Fsub, &mut source)),
+                0x1f => Ok(parse_instruction_from_register_to_value!(Fmul, &mut source)),
+                0x20 => Ok(parse_instruction_from_register_to_value!(Fdiv, &mut source)),
+                0x21 => Ok(parse_instruction_from_register_to_value!(Frem, &mut source)),
+                0x22 => Ok(parse_instruction_from_register_to_value!(Eq, &mut source)),
+                0x23 => Ok(parse_instruction_from_register_to_value!(Ne, &mut source)),
+                0x24 => Ok(parse_instruction_from_register_to_value!(Slt, &mut source)),
+                0x25 => Ok(parse_instruction_from_register_to_value!(Sle, &mut source)),
+                0x26 => Ok(parse_instruction_from_register_to_value!(Sgt, &mut source)),
+                0x27 => Ok(parse_instruction_from_register_to_value!(Sge, &mut source)),
                 _ => Err(Error::from(ParsingError::InvalidInstructionByte)),
             }?;
             instructions.push(instruction);
-            next = peekable.next();
+            next = source.next();
         }
         Ok(Program(instructions))
     }
 }
 /*
 enum Commands : unsigned char {
-    CMD_LD8,
-    CMD_LD16,
-    CMD_LD32,
-    CMD_LD64,
-    CMD_ST8,
-    CMD_ST16,
-    CMD_ST32,
-    CMD_ST64,
-    CMD_LEA,
-
-    CMD_IADD,
-    CMD_ISUB,
-    CMD_SMUL,
-    CMD_UMUL,
-    CMD_SREM,
-    CMD_UREM,
-    CMD_SDIV,
-    CMD_UDIV,
-
-    CMD_AND,
-    CMD_OR,
-    CMD_XOR,
-    CMD_SHL,
-    CMD_LSHR,
-    CMD_ASHR,
-    CMD_INEG,
-
-    CMD_FADD,
-    CMD_FSUB,
-    CMD_FMUL,
-    CMD_FDIV,
-    CMD_FREM,
-
-    CMD_EQ,
-    CMD_NE,
-
-    CMD_SLT,
-    CMD_SLE,
-    CMD_SGT,
-    CMD_SGE,
     CMD_ULT,
     CMD_ULE,
     CMD_UGT,
