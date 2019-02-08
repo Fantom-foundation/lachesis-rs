@@ -206,6 +206,30 @@ pub enum Instruction {
         register: u8,
         value: Value,
     },
+    Feq {
+        register: u8,
+        value: Value,
+    },
+    Fne {
+        register: u8,
+        value: Value,
+    },
+    Flt {
+        register: u8,
+        value: Value,
+    },
+    Fle {
+        register: u8,
+        value: Value,
+    },
+    Fgt {
+        register: u8,
+        value: Value,
+    },
+    Fge {
+        register: u8,
+        value: Value,
+    },
     Ult {
         register: u8,
         value: Value,
@@ -261,6 +285,10 @@ pub enum Instruction {
         offset: i64,
         register: u8,
     },
+    Jnz {
+        offset: i64,
+        register: u8,
+    },
     Lea {
         destiny: u8,
         source: u8,
@@ -289,6 +317,15 @@ pub enum Instruction {
         return_register: u8,
         arguments: [Option<u8>; 8],
     },
+}
+
+macro_rules! parse_instruction_with_register_and_offset {
+    ($instr: ident, $stream: expr) => {
+        Instruction::$instr {
+            offset: Instruction::parse_i64($stream)?,
+            register: Instruction::parse_register($stream)?,
+        }
+    };
 }
 
 macro_rules! parse_instruction_with_register {
@@ -334,6 +371,18 @@ impl Instruction {
         Ok(Instruction::Fd { name, args, skip })
     }
 
+    fn parse_call(stream: &mut Iterator<Item = u8>, nargs: usize) -> Result<Instruction, Error> {
+        let return_register = Instruction::parse_register(stream)?;
+        let mut arguments = [None; 8];
+        for i in 0..(nargs-1) {
+            arguments[i] = Some(Instruction::parse_register(stream)?);
+        }
+        Ok(Instruction::Call {
+            arguments,
+            return_register,
+        })
+    }
+
     fn parse_string(stream: &mut Iterator<Item = u8>) -> Result<String, Error> {
         let string_length = stream
             .next()
@@ -342,6 +391,20 @@ impl Instruction {
         let string_bytes: Vec<u8> = stream.take(string_length).collect();
         let name = String::from_utf8(string_bytes)?;
         Ok(name)
+    }
+
+    fn parse_i64(stream: &mut Iterator<Item = u8>) -> Result<i64, Error> {
+        let bytes: Vec<u8> = stream.take(8).collect();
+        if bytes.len() == 8 {
+            let mut current_shift: u64 = 7 * 8;
+            Ok(bytes.into_iter().fold(0i64, |acc, n| {
+                let r = acc + ((n as i64) << current_shift);
+                current_shift = current_shift.wrapping_sub(8);
+                r
+            }))
+        } else {
+            Err(Error::from(ParsingError::U64LacksInformation))
+        }
     }
 
     fn parse_u64(stream: &mut Iterator<Item = u8>) -> Result<u64, Error> {
@@ -444,6 +507,35 @@ impl TryFrom<Vec<u8>> for Program {
                 0x25 => Ok(parse_instruction_from_register_to_value!(Sle, &mut source)),
                 0x26 => Ok(parse_instruction_from_register_to_value!(Sgt, &mut source)),
                 0x27 => Ok(parse_instruction_from_register_to_value!(Sge, &mut source)),
+                0x28 => Ok(parse_instruction_from_register_to_value!(Ult, &mut source)),
+                0x29 => Ok(parse_instruction_from_register_to_value!(Ule, &mut source)),
+                0x2a => Ok(parse_instruction_from_register_to_value!(Ugt, &mut source)),
+                0x2b => Ok(parse_instruction_from_register_to_value!(Uge, &mut source)),
+                0x2c => Ok(parse_instruction_from_register_to_value!(Feq, &mut source)),
+                0x2d => Ok(parse_instruction_from_register_to_value!(Fne, &mut source)),
+                0x2e => Ok(parse_instruction_from_register_to_value!(Flt, &mut source)),
+                0x2f => Ok(parse_instruction_from_register_to_value!(Fle, &mut source)),
+                0x30 => Ok(parse_instruction_from_register_to_value!(Fgt, &mut source)),
+                0x31 => Ok(parse_instruction_from_register_to_value!(Fge, &mut source)),
+                0x32 => Ok(Instruction::Jmp {
+                    offset: Instruction::parse_i64(&mut source)?,
+                }),
+                0x33 => Ok(parse_instruction_with_register_and_offset!(Jnz, &mut source)),
+                0x34 => Ok(parse_instruction_with_register_and_offset!(Jz, &mut source)),
+                0x35 => Instruction::parse_call(&mut source, 0),
+                0x36 => Instruction::parse_call(&mut source, 1),
+                0x37 => Instruction::parse_call(&mut source, 2),
+                0x38 => Instruction::parse_call(&mut source, 3),
+                0x39 => Instruction::parse_call(&mut source, 4),
+                0x3a => Instruction::parse_call(&mut source, 5),
+                0x3b => Instruction::parse_call(&mut source, 6),
+                0x3c => Instruction::parse_call(&mut source, 7),
+                0x3d => Instruction::parse_call(&mut source, 8),
+                0x3e => Ok(Instruction::Ret {
+                    value: Instruction::parse_value(&mut source)?,
+                }),
+                0x3f => Ok(Instruction::Leave),
+                0x40 => Ok(parse_instruction_from_register_to_register!(CssDyn, &mut source)),
                 _ => Err(Error::from(ParsingError::InvalidInstructionByte)),
             }?;
             instructions.push(instruction);
@@ -452,32 +544,3 @@ impl TryFrom<Vec<u8>> for Program {
         Ok(Program(instructions))
     }
 }
-/*
-enum Commands : unsigned char {
-    CMD_ULT,
-    CMD_ULE,
-    CMD_UGT,
-    CMD_UGE,
-    CMD_FEQ,
-    CMD_FNE,
-    CMD_FLT,
-    CMD_FLE,
-    CMD_FGT,
-    CMD_FGE,
-    CMD_JMP,
-    CMD_JNZ,
-    CMD_JZ,
-    CMD_CALL0,
-    CMD_CALL1,
-    CMD_CALL2,
-    CMD_CALL3,
-    CMD_CALL4,
-    CMD_CALL5,
-    CMD_CALL6,
-    CMD_CALL7,
-    CMD_CALL8,
-    CMD_RET,
-    CMD_LEAVE,
-    CMD_CSS_DYN,
-};
-*/
