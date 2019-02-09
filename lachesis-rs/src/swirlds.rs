@@ -967,6 +967,19 @@ impl<H: Hashgraph + Clone + fmt::Debug, P: Peer<H>> Swirlds<P, H> {
         parents: Option<ParentsPair>,
         round: Option<usize>,
     ) -> Result<EventHash, Error> {
+        let (event, hash) = self.create_event(parents, round)?;
+        self.add_event(event)?;
+        let mut current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
+        *current_head = Some(hash.clone());
+        Ok(hash.clone())
+    }
+
+    #[inline]
+    fn create_event(
+        &self,
+        parents: Option<ParentsPair>,
+        round: Option<usize>
+    ) -> Result<(Event<ParentsPair>, EventHash), Error> {
         let mut state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
         let mut event = Event::new(
             state.transactions.clone(),
@@ -981,10 +994,7 @@ impl<H: Hashgraph + Clone + fmt::Debug, P: Peer<H>> Swirlds<P, H> {
         let hash = event.hash()?;
         let signature = self.pk.sign(hash.as_ref());
         event.sign(EventSignature::new(signature.as_ref()));
-        self.add_event(event)?;
-        let mut current_head = get_from_mutex!(self.head, ResourceHeadPoisonError)?;
-        *current_head = Some(hash.clone());
-        Ok(hash.clone())
+        Ok((event, hash))
     }
 
     #[inline]
@@ -1230,15 +1240,20 @@ mod tests {
 
     #[test]
     fn it_should_merge_the_hashgraph() {
+        println!("start");
         let node = create_node();
         let remote_node = create_node();
+        println!("prev get heads");
         let head = node.head.lock().unwrap().clone().unwrap().clone();
         let remote_head = remote_node.head.lock().unwrap().clone().unwrap().clone();
+        println!("prev remote");
         let remote_hashgraph = {
             let mutex_guard = remote_node.hashgraph.lock().unwrap();
             (*mutex_guard).clone()
         };
+        println!("prev merge");
         node.merge_hashgraph(remote_hashgraph).unwrap();
+        println!("post merge");
         let hashgraph = node.hashgraph.lock().unwrap();
         assert!(hashgraph.contains_key(&head));
         assert!(hashgraph.contains_key(&remote_head));
