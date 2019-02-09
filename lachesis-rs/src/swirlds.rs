@@ -978,7 +978,7 @@ impl<H: Hashgraph + Clone + fmt::Debug, P: Peer<H>> Swirlds<P, H> {
     fn create_event(
         &self,
         parents: Option<ParentsPair>,
-        round: Option<usize>
+        round: Option<usize>,
     ) -> Result<(Event<ParentsPair>, EventHash), Error> {
         let mut state = get_from_mutex!(self.state, ResourceNodeInternalStatePoisonError)?;
         let mut event = Event::new(

@@ -374,7 +374,7 @@ impl Instruction {
     fn parse_call(stream: &mut Iterator<Item = u8>, nargs: usize) -> Result<Instruction, Error> {
         let return_register = Instruction::parse_register(stream)?;
         let mut arguments = [None; 8];
-        for i in 0..(nargs-1) {
+        for i in 0..(nargs - 1) {
             arguments[i] = Some(Instruction::parse_register(stream)?);
         }
         Ok(Instruction::Call {
@@ -471,7 +471,10 @@ impl TryFrom<Vec<u8>> for Program {
                 0x01 => Ok(parse_instruction_from_register_to_value!(Mov, &mut source)),
                 0x02 => Ok(parse_instruction_with_string_and_register!(Gg, &mut source)),
                 0x03 => Ok(parse_instruction_with_string_and_register!(Sg, &mut source)),
-                0x04 => Ok(parse_instruction_with_string_and_register!(Css, &mut source)),
+                0x04 => Ok(parse_instruction_with_string_and_register!(
+                    Css,
+                    &mut source
+                )),
                 0x05 => Ok(parse_instruction_from_register_to_value!(Ld8, &mut source)),
                 0x06 => Ok(parse_instruction_from_register_to_value!(Ld16, &mut source)),
                 0x07 => Ok(parse_instruction_from_register_to_value!(Ld32, &mut source)),
@@ -480,7 +483,10 @@ impl TryFrom<Vec<u8>> for Program {
                 0x0a => Ok(parse_instruction_from_register_to_value!(St16, &mut source)),
                 0x0b => Ok(parse_instruction_from_register_to_value!(St32, &mut source)),
                 0x0c => Ok(parse_instruction_from_register_to_value!(St64, &mut source)),
-                0x0d => Ok(parse_instruction_from_register_to_register!(Lea, &mut source)),
+                0x0d => Ok(parse_instruction_from_register_to_register!(
+                    Lea,
+                    &mut source
+                )),
                 0x0e => Ok(parse_instruction_from_register_to_value!(Iadd, &mut source)),
                 0x0f => Ok(parse_instruction_from_register_to_value!(Isub, &mut source)),
                 0x10 => Ok(parse_instruction_from_register_to_value!(Smul, &mut source)),
@@ -520,7 +526,10 @@ impl TryFrom<Vec<u8>> for Program {
                 0x32 => Ok(Instruction::Jmp {
                     offset: Instruction::parse_i64(&mut source)?,
                 }),
-                0x33 => Ok(parse_instruction_with_register_and_offset!(Jnz, &mut source)),
+                0x33 => Ok(parse_instruction_with_register_and_offset!(
+                    Jnz,
+                    &mut source
+                )),
                 0x34 => Ok(parse_instruction_with_register_and_offset!(Jz, &mut source)),
                 0x35 => Instruction::parse_call(&mut source, 0),
                 0x36 => Instruction::parse_call(&mut source, 1),
@@ -535,7 +544,10 @@ impl TryFrom<Vec<u8>> for Program {
                     value: Instruction::parse_value(&mut source)?,
                 }),
                 0x3f => Ok(Instruction::Leave),
-                0x40 => Ok(parse_instruction_from_register_to_register!(CssDyn, &mut source)),
+                0x40 => Ok(parse_instruction_from_register_to_register!(
+                    CssDyn,
+                    &mut source
+                )),
                 _ => Err(Error::from(ParsingError::InvalidInstructionByte)),
             }?;
             instructions.push(instruction);
