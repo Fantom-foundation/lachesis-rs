@@ -80,6 +80,7 @@ or
 #[macro_use]
 extern crate failure;
 use failure::Error;
+use std:: collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
@@ -554,5 +555,29 @@ impl TryFrom<Vec<u8>> for Program {
             next = source.next();
         }
         Ok(Program(instructions))
+    }
+}
+
+pub enum Function<F: Fn(Vec<u8>) -> Result<u64, Error>> {
+    Native(F),
+    UserDefined,
+}
+
+pub struct Cpu<F: Fn(Vec<u8>) -> Result<u64, Error>> {
+    functions: HashMap<String, Function<F>>,
+    register_stack: Vec<[u64; 256]>,
+}
+
+impl<F: Fn(Vec<u8>) -> Result<u64, Error>> Cpu<F> {
+    pub fn new() -> Cpu<F> {
+        let mut functions = HashMap::new();
+        Cpu {
+            functions,
+            register_stack: vec![[0; 256]],
+        }
+    }
+
+    fn current_register_stack(&self) -> &[u64; 256] {
+        self.register_stack.last().unwrap()
     }
 }
