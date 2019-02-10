@@ -80,7 +80,7 @@ or
 #[macro_use]
 extern crate failure;
 use failure::Error;
-use std:: collections::HashMap;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
