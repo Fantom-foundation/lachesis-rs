@@ -459,6 +459,16 @@ pub enum ParsingError {
     InvalidInstructionByte,
 }
 
+#[derive(Debug, Fail)]
+pub enum RuntimeError {
+    #[fail(display = "Wrong number of arguments for {}: Expected {}, got {}.", name, expected, got)]
+    WrongArgumentsNumber {
+        name: String,
+        expected: usize,
+        got: usize,
+    },
+}
+
 impl TryFrom<Vec<u8>> for Program {
     type Error = Error;
     fn try_from(instructions: Vec<u8>) -> Result<Program, Error> {
@@ -558,25 +568,61 @@ impl TryFrom<Vec<u8>> for Program {
     }
 }
 
-pub enum Function<F: Fn(Vec<u8>) -> Result<u64, Error>> {
-    Native(F),
+pub type CpuFn = Box<Fn(&StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
+pub enum Function {
+    Native(CpuFn),
     UserDefined,
 }
 
-pub struct Cpu<F: Fn(Vec<u8>) -> Result<u64, Error>> {
-    functions: HashMap<String, Function<F>>,
+trait StackBasedCpu {
+    fn current_register_stack(&self) -> &[u64; 256];
+}
+
+pub struct Cpu {
+    functions: HashMap<String, Function>,
     register_stack: Vec<[u64; 256]>,
 }
 
-impl<F: Fn(Vec<u8>) -> Result<u64, Error>> Cpu<F> {
-    pub fn new() -> Cpu<F> {
+fn extract_bytes(n: u64) -> [u8; 8] {
+    let mut res = [0; 8];
+    for i in 0..7 {
+        res[i] = (n >> (7-i)) as u8;
+    }
+    res
+}
+
+impl Cpu {
+    pub fn new() -> Cpu {
         let mut functions = HashMap::new();
+        functions.insert("puts".to_owned(), Function::Native(Box::new(|cpu, args| {
+            if args.len() == 1 {
+                let registers: &[u64; 256] = cpu.current_register_stack();
+                let u8_contents = registers[args[0] as usize..]
+                    .iter()
+                    .map(|n| extract_bytes(n.clone()).to_vec().into_iter())
+                    .flatten()
+                    .collect::<Vec<u8>>();
+                let contents = String::from_utf8(u8_contents).map_err(|e| Error::from(e));
+                contents.map(|s| {
+                    println!("{}", s);
+                    0
+                })
+            } else {
+                Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                    name: "puts".to_owned(),
+                    expected: 1,
+                    got: args.len(),
+                }))
+            }
+        })));
         Cpu {
             functions,
             register_stack: vec![[0; 256]],
         }
     }
+}
 
+impl StackBasedCpu for Cpu {
     fn current_register_stack(&self) -> &[u64; 256] {
         self.register_stack.last().unwrap()
     }
