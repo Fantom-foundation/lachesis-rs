@@ -79,6 +79,8 @@ or
 */
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate runtime_fmt;
 use failure::Error;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -461,7 +463,10 @@ pub enum ParsingError {
 
 #[derive(Debug, Fail)]
 pub enum RuntimeError {
-    #[fail(display = "Wrong number of arguments for {}: Expected {}, got {}.", name, expected, got)]
+    #[fail(
+        display = "Wrong number of arguments for {}: Expected {}, got {}.",
+        name, expected, got
+    )]
     WrongArgumentsNumber {
         name: String,
         expected: usize,
@@ -574,8 +579,129 @@ pub enum Function {
     UserDefined,
 }
 
+fn registers_to_string(registers: &[u64; 256], index: usize) -> Result<String, Error> {
+    let u8_contents = registers[index..]
+        .iter()
+        .map(|n| extract_bytes(n.clone()).to_vec().into_iter())
+        .flatten()
+        .collect::<Vec<u8>>();
+    String::from_utf8(u8_contents).map_err(|e| Error::from(e))
+}
+
 trait StackBasedCpu {
     fn current_register_stack(&self) -> &[u64; 256];
+
+    fn puts(&self, args: Vec<u8>) -> Result<u64, Error> {
+        if args.len() == 1 {
+            let registers: &[u64; 256] = self.current_register_stack();
+            registers_to_string(registers, args[0] as usize).map(|s| {
+                println!("{}", s);
+                0
+            })
+        } else {
+            Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "puts".to_owned(),
+                expected: 1,
+                got: args.len(),
+            }))
+        }
+    }
+
+    fn printf(&self, args: Vec<u8>) -> Result<u64, Error> {
+        let registers: &[u64; 256] = self.current_register_stack();
+        match args.len() {
+            1 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(content).unwrap();
+                Ok(0)
+            }
+            2 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(content, registers_to_string(registers, args[1] as usize)?).unwrap();
+                Ok(0)
+            }
+            3 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(
+                    content,
+                    registers_to_string(registers, args[1] as usize)?,
+                    registers_to_string(registers, args[2] as usize)?,
+                )
+                .unwrap();
+                Ok(0)
+            }
+            4 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(
+                    content,
+                    registers_to_string(registers, args[1] as usize)?,
+                    registers_to_string(registers, args[2] as usize)?,
+                    registers_to_string(registers, args[3] as usize)?,
+                )
+                .unwrap();
+                Ok(0)
+            }
+            5 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(
+                    content,
+                    registers_to_string(registers, args[1] as usize)?,
+                    registers_to_string(registers, args[2] as usize)?,
+                    registers_to_string(registers, args[3] as usize)?,
+                    registers_to_string(registers, args[4] as usize)?,
+                )
+                .unwrap();
+                Ok(0)
+            }
+            6 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(
+                    content,
+                    registers_to_string(registers, args[1] as usize)?,
+                    registers_to_string(registers, args[2] as usize)?,
+                    registers_to_string(registers, args[3] as usize)?,
+                    registers_to_string(registers, args[4] as usize)?,
+                    registers_to_string(registers, args[5] as usize)?,
+                )
+                .unwrap();
+                Ok(0)
+            }
+            7 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(
+                    content,
+                    registers_to_string(registers, args[1] as usize)?,
+                    registers_to_string(registers, args[2] as usize)?,
+                    registers_to_string(registers, args[3] as usize)?,
+                    registers_to_string(registers, args[4] as usize)?,
+                    registers_to_string(registers, args[5] as usize)?,
+                    registers_to_string(registers, args[6] as usize)?,
+                )
+                .unwrap();
+                Ok(0)
+            }
+            8 => {
+                let content = registers_to_string(registers, args[0] as usize)?;
+                rt_println!(
+                    content,
+                    registers_to_string(registers, args[1] as usize)?,
+                    registers_to_string(registers, args[2] as usize)?,
+                    registers_to_string(registers, args[3] as usize)?,
+                    registers_to_string(registers, args[4] as usize)?,
+                    registers_to_string(registers, args[5] as usize)?,
+                    registers_to_string(registers, args[6] as usize)?,
+                    registers_to_string(registers, args[7] as usize)?,
+                )
+                .unwrap();
+                Ok(0)
+            }
+            n => Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "printf".to_owned(),
+                expected: 8,
+                got: n,
+            })),
+        }
+    }
 }
 
 pub struct Cpu {
@@ -586,7 +712,7 @@ pub struct Cpu {
 fn extract_bytes(n: u64) -> [u8; 8] {
     let mut res = [0; 8];
     for i in 0..7 {
-        res[i] = (n >> (7-i)) as u8;
+        res[i] = (n >> (7 - i)) as u8;
     }
     res
 }
@@ -594,27 +720,14 @@ fn extract_bytes(n: u64) -> [u8; 8] {
 impl Cpu {
     pub fn new() -> Cpu {
         let mut functions = HashMap::new();
-        functions.insert("puts".to_owned(), Function::Native(Box::new(|cpu, args| {
-            if args.len() == 1 {
-                let registers: &[u64; 256] = cpu.current_register_stack();
-                let u8_contents = registers[args[0] as usize..]
-                    .iter()
-                    .map(|n| extract_bytes(n.clone()).to_vec().into_iter())
-                    .flatten()
-                    .collect::<Vec<u8>>();
-                let contents = String::from_utf8(u8_contents).map_err(|e| Error::from(e));
-                contents.map(|s| {
-                    println!("{}", s);
-                    0
-                })
-            } else {
-                Err(Error::from(RuntimeError::WrongArgumentsNumber {
-                    name: "puts".to_owned(),
-                    expected: 1,
-                    got: args.len(),
-                }))
-            }
-        })));
+        functions.insert(
+            "puts".to_owned(),
+            Function::Native(Box::new(|cpu, args| cpu.puts(args))),
+        );
+        functions.insert(
+            "printf".to_owned(),
+            Function::Native(Box::new(|cpu, args| cpu.printf(args))),
+        );
         Cpu {
             functions,
             register_stack: vec![[0; 256]],
