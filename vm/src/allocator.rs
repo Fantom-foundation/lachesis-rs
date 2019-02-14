@@ -13,9 +13,71 @@ pub(crate) enum AllocatorError {
     AddressAlreadyFreed { address: usize },
 }
 
+struct FreeChunks {
+    free_chunks: Vec<(usize, usize)>,
+}
+
+impl FreeChunks {
+    fn new(capacity: usize) -> FreeChunks {
+        FreeChunks {
+            free_chunks: vec![(0, capacity)],
+        }
+    }
+
+    fn remove(&mut self, index: usize) {
+        self.free_chunks.remove(index);
+    }
+
+    fn len(&self) -> usize {
+        self.free_chunks.len()
+    }
+
+    fn insert(&mut self, item: (usize, usize)) -> Result<(), Error> {
+        match self
+            .free_chunks
+            .binary_search_by(|(f, t)| (item.1 - item.0).cmp(&(t - f)))
+            {
+                Ok(_) => Err(Error::from(AllocatorError::AddressAlreadyFreed {
+                    address: item.0,
+                })),
+                Err(pos) => {
+                    self.free_chunks.insert(pos, item);
+                    Ok(())
+                }
+            }
+    }
+
+    fn get_adjacent_chunk(&self, from: usize, to: usize) -> Option<(usize, (usize, usize))> {
+        self
+            .free_chunks
+            .iter()
+            .enumerate()
+            .find(|(_, (f, t))| f.clone() == to || from == t.clone())
+            .map(|(i, (f, t))| (i, (f.clone(), t.clone())))
+    }
+
+    fn find_suitable_chunk(&self, size: usize) -> Option<(usize, (usize, usize))> {
+        self
+            .free_chunks
+            .iter()
+            .rev()
+            .enumerate()
+            .find(|(_, (from, to))| (to.clone() - from.clone()) >= size)
+            .map(|(i, (f, t))| (self.free_chunks.len() - i - 1, (f.clone(), t.clone())))
+    }
+
+    fn available_memory(&self) -> usize {
+        self
+            .free_chunks
+            .iter()
+            .map(|(from, to)| to.clone() - from.clone())
+            .sum()
+    }
+}
+
 pub(crate) struct Allocator {
     memory: Rc<RefCell<Vec<u64>>>,
-    free_chunks: Vec<(usize, usize)>,
+    free_chunks: FreeChunks,
     allocated_spaces: HashMap<usize, usize>,
 }
 
@@ -25,28 +87,18 @@ impl Allocator {
         Allocator {
             memory,
             allocated_spaces: HashMap::new(),
-            free_chunks: vec![(0, capacity)],
+            free_chunks: FreeChunks::new(capacity),
         }
     }
 
     pub(crate) fn malloc(&mut self, size: usize) -> Result<usize, Error> {
-        let free_memory = self
-            .free_chunks
-            .iter()
-            .map(|(from, to)| to.clone() - from.clone())
-            .sum();
+        let free_memory = self.free_chunks.available_memory();
         if size > free_memory {
             Err(Error::from(AllocatorError::NotEnoughMemory {
                 intended: size,
             }))
         } else {
-            let space = self
-                .free_chunks
-                .iter()
-                .rev()
-                .enumerate()
-                .find(|(_, (from, to))| (to.clone() - from.clone()) >= size)
-                .map(|(i, (f, t))| (self.free_chunks.len() - i - 1, (f.clone(), t.clone())));
+            let space = self.free_chunks.find_suitable_chunk(size);
             match space {
                 None => Err(Error::from(AllocatorError::NotEnoughMemory {
                     intended: size,
@@ -54,7 +106,7 @@ impl Allocator {
                 Some((index, (from, to))) => {
                     self.free_chunks.remove(index);
                     if from + size < to {
-                        self.insert_free_chunk_sorted((from + size, to));
+                        self.free_chunks.insert((from + size, to));
                     }
                     self.allocated_spaces.insert(from, size);
                     Ok(from)
@@ -75,33 +127,13 @@ impl Allocator {
     }
 
     fn add_free_space(&mut self, from: usize, to: usize) -> Result<(), Error> {
-        let adjacent = self
-            .free_chunks
-            .iter()
-            .enumerate()
-            .find(|(_, (f, t))| f.clone() == to || from == t.clone())
-            .map(|(i, (f, t))| (i, (f.clone(), t.clone())));
+        let adjacent = self.free_chunks.get_adjacent_chunk(from, to);
         match adjacent {
             Some((i, (f, t))) => {
                 self.free_chunks.remove(i);
-                self.insert_free_chunk_sorted(if f == to { (from, t) } else { (f, to) })
+                self.free_chunks.insert(if f == to { (from, t) } else { (f, to) })
             }
-            None => self.insert_free_chunk_sorted((from, to)),
-        }
-    }
-
-    fn insert_free_chunk_sorted(&mut self, item: (usize, usize)) -> Result<(), Error> {
-        match self
-            .free_chunks
-            .binary_search_by(|(f, t)| (item.1 - item.0).cmp(&(t - f)))
-        {
-            Ok(_) => Err(Error::from(AllocatorError::AddressAlreadyFreed {
-                address: item.0,
-            })),
-            Err(pos) => {
-                self.free_chunks.insert(pos, item);
-                Ok(())
-            }
+            None => self.free_chunks.insert((from, to)),
         }
     }
 }
