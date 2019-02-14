@@ -36,20 +36,19 @@ impl FreeChunks {
         match self
             .free_chunks
             .binary_search_by(|(f, t)| (item.1 - item.0).cmp(&(t - f)))
-            {
-                Ok(_) => Err(Error::from(AllocatorError::AddressAlreadyFreed {
-                    address: item.0,
-                })),
-                Err(pos) => {
-                    self.free_chunks.insert(pos, item);
-                    Ok(())
-                }
+        {
+            Ok(_) => Err(Error::from(AllocatorError::AddressAlreadyFreed {
+                address: item.0,
+            })),
+            Err(pos) => {
+                self.free_chunks.insert(pos, item);
+                Ok(())
             }
+        }
     }
 
     fn get_adjacent_chunk(&self, from: usize, to: usize) -> Option<(usize, (usize, usize))> {
-        self
-            .free_chunks
+        self.free_chunks
             .iter()
             .enumerate()
             .find(|(_, (f, t))| f.clone() == to || from == t.clone())
@@ -57,8 +56,7 @@ impl FreeChunks {
     }
 
     fn find_suitable_chunk(&self, size: usize) -> Option<(usize, (usize, usize))> {
-        self
-            .free_chunks
+        self.free_chunks
             .iter()
             .rev()
             .enumerate()
@@ -67,15 +65,14 @@ impl FreeChunks {
     }
 
     fn available_memory(&self) -> usize {
-        self
-            .free_chunks
+        self.free_chunks
             .iter()
             .map(|(from, to)| to.clone() - from.clone())
             .sum()
     }
 }
 
-pub(crate) struct Allocator {
+pub struct Allocator {
     memory: Rc<RefCell<Vec<u64>>>,
     free_chunks: FreeChunks,
     allocated_spaces: HashMap<usize, usize>,
@@ -131,7 +128,8 @@ impl Allocator {
         match adjacent {
             Some((i, (f, t))) => {
                 self.free_chunks.remove(i);
-                self.free_chunks.insert(if f == to { (from, t) } else { (f, to) })
+                self.free_chunks
+                    .insert(if f == to { (from, t) } else { (f, to) })
             }
             None => self.free_chunks.insert((from, to)),
         }

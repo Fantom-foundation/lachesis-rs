@@ -81,10 +81,13 @@ or
 extern crate failure;
 #[macro_use]
 extern crate runtime_fmt;
+use crate::allocator::Allocator;
 use failure::Error;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::Iterator;
+use std::rc::Rc;
 
 mod allocator;
 
@@ -577,7 +580,7 @@ impl TryFrom<Vec<u8>> for Program {
     }
 }
 
-pub type CpuFn = Box<Fn(&StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
+pub type CpuFn = Box<Fn(&mut StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
 pub enum Function {
     Native(CpuFn),
     UserDefined,
@@ -594,6 +597,8 @@ fn registers_to_string(registers: &[u64; 256], index: usize) -> Result<String, E
 
 pub trait StackBasedCpu {
     fn current_register_stack(&self) -> &[u64; 256];
+
+    fn get_allocator(&mut self) -> &mut Allocator;
 
     fn puts(&self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() == 1 {
@@ -720,10 +725,38 @@ pub trait StackBasedCpu {
             }))
         }
     }
+
+    fn malloc(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+        if args.len() != 1 {
+            Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "malloc".to_owned(),
+                expected: 1,
+                got: args.len(),
+            }))
+        } else {
+            let size = self.current_register_stack()[0].clone() as usize;
+            self.get_allocator().malloc(size).map(|v| v as u64)
+        }
+    }
+
+    fn free(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+        if args.len() != 1 {
+            Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "free".to_owned(),
+                expected: 1,
+                got: args.len(),
+            }))
+        } else {
+            let address = self.current_register_stack()[0].clone() as usize;
+            self.get_allocator().free(address).map(|_| 0)
+        }
+    }
 }
 
 pub struct Cpu {
+    allocator: Allocator,
     functions: HashMap<String, Function>,
+    memory: Rc<RefCell<Vec<u64>>>,
     register_stack: Vec<[u64; 256]>,
 }
 
@@ -736,7 +769,9 @@ fn extract_bytes(n: u64) -> [u8; 8] {
 }
 
 impl Cpu {
-    pub fn new() -> Cpu {
+    pub fn new(capacity: usize) -> Cpu {
+        let memory = Rc::new(RefCell::new(Vec::with_capacity(capacity)));
+        let allocator = Allocator::new(memory.clone());
         let mut functions = HashMap::new();
         functions.insert(
             "puts".to_owned(),
@@ -750,8 +785,18 @@ impl Cpu {
             "exit".to_owned(),
             Function::Native(Box::new(|cpu, args| cpu.exit(args))),
         );
+        functions.insert(
+            "malloc".to_owned(),
+            Function::Native(Box::new(|cpu, args| cpu.malloc(args))),
+        );
+        functions.insert(
+            "free".to_owned(),
+            Function::Native(Box::new(|cpu, args| cpu.free(args))),
+        );
         Cpu {
+            allocator,
             functions,
+            memory,
             register_stack: vec![[0; 256]],
         }
     }
@@ -760,5 +805,9 @@ impl Cpu {
 impl StackBasedCpu for Cpu {
     fn current_register_stack(&self) -> &[u64; 256] {
         self.register_stack.last().unwrap()
+    }
+
+    fn get_allocator(&mut self) -> &mut Allocator {
+        &mut self.allocator
     }
 }
