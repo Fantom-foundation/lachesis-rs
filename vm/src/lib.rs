@@ -86,6 +86,8 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::Iterator;
 
+mod allocator;
+
 pub struct Program(Vec<Instruction>);
 
 pub enum Instruction {
@@ -472,6 +474,8 @@ pub enum RuntimeError {
         expected: usize,
         got: usize,
     },
+    #[fail(display = "Program ended with code {}", errno)]
+    ProgramEnded { errno: u64 },
 }
 
 impl TryFrom<Vec<u8>> for Program {
@@ -588,7 +592,7 @@ fn registers_to_string(registers: &[u64; 256], index: usize) -> Result<String, E
     String::from_utf8(u8_contents).map_err(|e| Error::from(e))
 }
 
-trait StackBasedCpu {
+pub trait StackBasedCpu {
     fn current_register_stack(&self) -> &[u64; 256];
 
     fn puts(&self, args: Vec<u8>) -> Result<u64, Error> {
@@ -702,6 +706,20 @@ trait StackBasedCpu {
             })),
         }
     }
+
+    fn exit(&self, args: Vec<u8>) -> Result<u64, Error> {
+        if args.len() != 1 {
+            Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "exit".to_owned(),
+                expected: 1,
+                got: args.len(),
+            }))
+        } else {
+            Err(Error::from(RuntimeError::ProgramEnded {
+                errno: self.current_register_stack()[0].clone(),
+            }))
+        }
+    }
 }
 
 pub struct Cpu {
@@ -727,6 +745,10 @@ impl Cpu {
         functions.insert(
             "printf".to_owned(),
             Function::Native(Box::new(|cpu, args| cpu.printf(args))),
+        );
+        functions.insert(
+            "exit".to_owned(),
+            Function::Native(Box::new(|cpu, args| cpu.exit(args))),
         );
         Cpu {
             functions,
