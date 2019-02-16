@@ -6,4 +6,5 @@ edition = "2018"
 
 [dependencies]
 failure = "0.1.3"
+libc = "0.2"
 runtime-fmt = "0.3.0"

@@ -83,6 +83,7 @@ extern crate failure;
 extern crate runtime_fmt;
 use crate::allocator::Allocator;
 use failure::Error;
+use libc::scanf;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -710,6 +711,90 @@ pub trait StackBasedCpu {
                 got: n,
             })),
         }
+    }
+
+    fn scanf(&self, args: Vec<u8>) -> Result<u64, Error> {
+        if args.len() == 0 {
+            return Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "scanf".to_owned(),
+                expected: 8,
+                got: 0,
+            }))
+        }
+        let registers: &[u64; 256] = self.current_register_stack();
+        let content: Vec<i8> = registers_to_string(registers, args[0] as usize)?
+            .into_bytes()
+            .iter()
+            .map(|v| v.clone() as i8)
+            .collect();
+        let mut args_ptr = args.clone();
+        let r = match args.len() {
+            1 => Ok(unsafe { scanf((&content).as_ptr()) }),
+            2 => Ok(unsafe { scanf((&content).as_ptr(), args_ptr.as_mut_ptr().add(1)) }),
+            3 => Ok(unsafe {
+                scanf(
+                    (&content).as_ptr(),
+                    args_ptr.as_mut_ptr().add(1),
+                    args_ptr.as_mut_ptr().add(2),
+                )
+            }),
+            4 => Ok(unsafe {
+                scanf(
+                    (&content).as_ptr(),
+                    args_ptr.as_mut_ptr().add(1),
+                    args_ptr.as_mut_ptr().add(2),
+                    args_ptr.as_mut_ptr().add(3),
+                )
+            }),
+            5 => Ok(unsafe {
+                scanf(
+                    (&content).as_ptr(),
+                    args_ptr.as_mut_ptr().add(1),
+                    args_ptr.as_mut_ptr().add(2),
+                    args_ptr.as_mut_ptr().add(3),
+                    args_ptr.as_mut_ptr().add(4),
+                )
+            }),
+            6 => Ok(unsafe {
+                scanf(
+                    (&content).as_ptr(),
+                    args_ptr.as_mut_ptr().add(1),
+                    args_ptr.as_mut_ptr().add(2),
+                    args_ptr.as_mut_ptr().add(3),
+                    args_ptr.as_mut_ptr().add(4),
+                    args_ptr.as_mut_ptr().add(5),
+                )
+            }),
+            7 => Ok(unsafe {
+                scanf(
+                    (&content).as_ptr(),
+                    args_ptr.as_mut_ptr().add(1),
+                    args_ptr.as_mut_ptr().add(2),
+                    args_ptr.as_mut_ptr().add(3),
+                    args_ptr.as_mut_ptr().add(4),
+                    args_ptr.as_mut_ptr().add(5),
+                    args_ptr.as_mut_ptr().add(6),
+                )
+            }),
+            8 => Ok(unsafe {
+                scanf(
+                    (&content).as_ptr(),
+                    args_ptr.as_mut_ptr().add(1),
+                    args_ptr.as_mut_ptr().add(2),
+                    args_ptr.as_mut_ptr().add(3),
+                    args_ptr.as_mut_ptr().add(4),
+                    args_ptr.as_mut_ptr().add(5),
+                    args_ptr.as_mut_ptr().add(6),
+                    args_ptr.as_mut_ptr().add(7),
+                )
+            }),
+            n => Err(Error::from(RuntimeError::WrongArgumentsNumber {
+                name: "scanf".to_owned(),
+                expected: 8,
+                got: n,
+            })),
+        }?;
+        Ok(r as u64)
     }
 
     fn exit(&self, args: Vec<u8>) -> Result<u64, Error> {
