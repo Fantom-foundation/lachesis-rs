@@ -94,6 +94,7 @@ mod allocator;
 
 pub struct Program(Vec<Instruction>);
 
+#[derive(Clone)]
 pub enum Instruction {
     Fd {
         name: String,
@@ -448,6 +449,7 @@ impl Instruction {
     }
 }
 
+#[derive(Clone)]
 pub enum Value {
     Constant(u64),
     Register(u8),
@@ -480,6 +482,8 @@ pub enum RuntimeError {
     },
     #[fail(display = "Program ended with code {}", errno)]
     ProgramEnded { errno: u64 },
+    #[fail(display = "Global not found {}", name)]
+    GlobalNotFound { name: String },
 }
 
 impl TryFrom<Vec<u8>> for Program {
@@ -584,7 +588,7 @@ impl TryFrom<Vec<u8>> for Program {
 pub type CpuFn = Box<Fn(&mut StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
 pub enum Function {
     Native(CpuFn),
-    UserDefined,
+    UserDefined(usize, u64, u64),
 }
 
 fn registers_to_string(registers: &[u64; 256], index: usize) -> Result<String, Error> {
@@ -597,11 +601,11 @@ fn registers_to_string(registers: &[u64; 256], index: usize) -> Result<String, E
 }
 
 pub trait StackBasedCpu {
-    fn current_register_stack(&self) -> &[u64; 256];
+    fn current_register_stack(&mut self) -> &mut [u64; 256];
 
     fn get_allocator(&mut self) -> &mut Allocator;
 
-    fn puts(&self, args: Vec<u8>) -> Result<u64, Error> {
+    fn puts(&mut self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() == 1 {
             let registers: &[u64; 256] = self.current_register_stack();
             registers_to_string(registers, args[0] as usize).map(|s| {
@@ -617,7 +621,7 @@ pub trait StackBasedCpu {
         }
     }
 
-    fn printf(&self, args: Vec<u8>) -> Result<u64, Error> {
+    fn printf(&mut self, args: Vec<u8>) -> Result<u64, Error> {
         let registers: &[u64; 256] = self.current_register_stack();
         match args.len() {
             1 => {
@@ -713,13 +717,13 @@ pub trait StackBasedCpu {
         }
     }
 
-    fn scanf(&self, args: Vec<u8>) -> Result<u64, Error> {
+    fn scanf(&mut self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() == 0 {
             return Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "scanf".to_owned(),
                 expected: 8,
                 got: 0,
-            }))
+            }));
         }
         let registers: &[u64; 256] = self.current_register_stack();
         let content: Vec<i8> = registers_to_string(registers, args[0] as usize)?
@@ -797,7 +801,7 @@ pub trait StackBasedCpu {
         Ok(r as u64)
     }
 
-    fn exit(&self, args: Vec<u8>) -> Result<u64, Error> {
+    fn exit(&mut self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() != 1 {
             Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "exit".to_owned(),
@@ -840,7 +844,8 @@ pub trait StackBasedCpu {
 
 pub struct Cpu {
     allocator: Allocator,
-    functions: HashMap<String, Function>,
+    pub(crate) functions: HashMap<String, Function>,
+    globals: HashMap<String, u64>,
     memory: Rc<RefCell<Vec<u64>>>,
     register_stack: Vec<[u64; 256]>,
 }
@@ -882,17 +887,168 @@ impl Cpu {
             allocator,
             functions,
             memory,
+            globals: HashMap::new(),
             register_stack: vec![[0; 256]],
+        }
+    }
+
+    pub fn execute(&mut self, program: Program) -> Result<(), Error> {
+        let mut i = 0;
+        while i < program.0.len() {
+            let instruction = program.0[i].clone();
+            match instruction {
+                Instruction::Fd { name, args, skip } => {
+                    self.functions
+                        .insert(name.clone(), Function::UserDefined(i, args, skip));
+                    i += skip as usize;
+                }
+                Instruction::Mov { register, value } => self.value_to_register(register, value),
+                Instruction::Gg { string, register } => {
+                    let value = self
+                        .globals
+                        .get(&string)
+                        .ok_or(Error::from(RuntimeError::GlobalNotFound {
+                            name: string.clone(),
+                        }))?
+                        .clone();
+                    let mut registers = self.current_register_stack();
+                    registers[register as usize] = value;
+                }
+                Instruction::Sg { string, register } => {
+                    let value = self.current_register_stack()[register as usize];
+                    self.globals.insert(string, value);
+                }
+                _ => panic!("Not implemented yet"),
+            }
+            i += 1;
+        }
+        Ok(())
+    }
+
+    fn value_to_register(&mut self, register: u8, value: Value) {
+        let registers = self.current_register_stack();
+        match value {
+            Value::Constant(v) => {
+                registers[register as usize] = v;
+            }
+            Value::Register(source) => {
+                let source_value = registers[source as usize];
+                registers[register as usize] = source_value;
+            }
         }
     }
 }
 
 impl StackBasedCpu for Cpu {
-    fn current_register_stack(&self) -> &[u64; 256] {
-        self.register_stack.last().unwrap()
+    fn current_register_stack(&mut self) -> &mut [u64; 256] {
+        self.register_stack.last_mut().unwrap()
     }
 
     fn get_allocator(&mut self) -> &mut Allocator {
         &mut self.allocator
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn it_should_add_a_new_function_on_fd() {
+        let instructions = vec![
+            Instruction::Fd {
+                name: "test".to_owned(),
+                args: 0,
+                skip: 1,
+            },
+            Instruction::Leave,
+        ];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(0);
+        cpu.execute(program).unwrap();
+        let test = cpu.functions.get("test").unwrap();
+        match test {
+            Function::UserDefined(ref start, ref args, ref skip) => {
+                assert_eq!(*start, 0);
+                assert_eq!(*args, 0);
+                assert_eq!(*skip, 1);
+            }
+            _ => panic!("Saved function should be user defined"),
+        }
+    }
+
+    #[test]
+    fn it_should_add_a_constant_to_a_register() {
+        let instructions = vec![Instruction::Mov {
+            register: 0,
+            value: Value::Constant(42),
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(0);
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers[0], 42);
+    }
+
+    #[test]
+    fn it_should_add_a_register_to_a_register() {
+        let instructions = vec![Instruction::Mov {
+            register: 0,
+            value: Value::Register(1),
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(0);
+        {
+            let mut registers = cpu.current_register_stack();
+            registers[1] = 42;
+        }
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers[0], 42);
+    }
+
+    #[test]
+    fn it_should_copy_a_global_to_a_register() {
+        let instructions = vec![Instruction::Gg {
+            string: "test".to_owned(),
+            register: 0,
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(0);
+        cpu.globals.insert("test".to_owned(), 42);
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers[0], 42);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "called `Result::unwrap()` on an `Err` value: GlobalNotFound { name: \"test\" }"
+    )]
+    fn it_should_panic_when_copying_from_an_unexisting_global() {
+        let instructions = vec![Instruction::Gg {
+            string: "test".to_owned(),
+            register: 0,
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(0);
+        cpu.execute(program).unwrap();
+    }
+
+    #[test]
+    fn it_should_copy_a_register_to_a_global() {
+        let instructions = vec![Instruction::Sg {
+            string: "test".to_owned(),
+            register: 0,
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(0);
+        {
+            let mut registers = cpu.current_register_stack();
+            registers[0] = 42;
+        }
+        cpu.execute(program).unwrap();
+        let global = cpu.globals.get("test").unwrap().clone();
+        assert_eq!(global, 42);
     }
 }

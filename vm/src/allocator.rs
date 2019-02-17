@@ -28,10 +28,6 @@ impl FreeChunks {
         self.free_chunks.remove(index);
     }
 
-    fn len(&self) -> usize {
-        self.free_chunks.len()
-    }
-
     fn insert(&mut self, item: (usize, usize)) -> Result<(), Error> {
         match self
             .free_chunks
@@ -103,7 +99,7 @@ impl Allocator {
                 Some((index, (from, to))) => {
                     self.free_chunks.remove(index);
                     if from + size < to {
-                        self.free_chunks.insert((from + size, to));
+                        self.free_chunks.insert((from + size, to))?;
                     }
                     self.allocated_spaces.insert(from, size);
                     Ok(from)
