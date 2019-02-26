@@ -9,7 +9,7 @@ impl Memory {
         let memory = Rc::new(RefCell::new(Vec::with_capacity(capacity)));
         {
             let mut raw_memory = memory.borrow_mut();
-            for _ in 0..capacity-1 {
+            for _ in 0..capacity - 1 {
                 raw_memory.push(0);
             }
         }
@@ -22,10 +22,9 @@ impl Memory {
 
     pub(crate) fn copy_u8_vector(&self, vector: &[u8], address: usize) {
         let data_len = (vector.len() as f64 / 8f64).ceil() as usize;
-        let data: &[u64] = unsafe {
-            std::slice::from_raw_parts(vector.as_ptr() as *const u64, data_len)
-        };
-        self.0.borrow_mut()[address..(address+data.len())].copy_from_slice(data);
+        let data: &[u64] =
+            unsafe { std::slice::from_raw_parts(vector.as_ptr() as *const u64, data_len) };
+        self.0.borrow_mut()[address..(address + data.len())].copy_from_slice(data);
     }
 }
 

@@ -134,80 +134,80 @@ pub trait StackBasedCpu {
             }
             2 => {
                 let content = registers.to_string(args[0] as usize)?;
-                rt_println!(content, registers.to_string( args[1] as usize)?).unwrap();
+                rt_println!(content, registers.to_string(args[1] as usize)?).unwrap();
                 Ok(0)
             }
             3 => {
-                let content = registers.to_string( args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers.to_string( args[1] as usize)?,
-                    registers.to_string( args[2] as usize)?,
+                    registers.to_string(args[1] as usize)?,
+                    registers.to_string(args[2] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             4 => {
-                let content = registers.to_string( args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers.to_string( args[1] as usize)?,
-                    registers.to_string( args[2] as usize)?,
-                    registers.to_string( args[3] as usize)?,
+                    registers.to_string(args[1] as usize)?,
+                    registers.to_string(args[2] as usize)?,
+                    registers.to_string(args[3] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             5 => {
-                let content = registers.to_string( args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers.to_string( args[1] as usize)?,
-                    registers.to_string( args[2] as usize)?,
-                    registers.to_string( args[3] as usize)?,
-                    registers.to_string( args[4] as usize)?,
+                    registers.to_string(args[1] as usize)?,
+                    registers.to_string(args[2] as usize)?,
+                    registers.to_string(args[3] as usize)?,
+                    registers.to_string(args[4] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             6 => {
-                let content = registers.to_string( args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers.to_string( args[1] as usize)?,
-                    registers.to_string( args[2] as usize)?,
-                    registers.to_string( args[3] as usize)?,
-                    registers.to_string( args[4] as usize)?,
-                    registers.to_string( args[5] as usize)?,
+                    registers.to_string(args[1] as usize)?,
+                    registers.to_string(args[2] as usize)?,
+                    registers.to_string(args[3] as usize)?,
+                    registers.to_string(args[4] as usize)?,
+                    registers.to_string(args[5] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             7 => {
-                let content = registers.to_string( args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers.to_string( args[1] as usize)?,
-                    registers.to_string( args[2] as usize)?,
-                    registers.to_string( args[3] as usize)?,
-                    registers.to_string( args[4] as usize)?,
-                    registers.to_string( args[5] as usize)?,
-                    registers.to_string( args[6] as usize)?,
+                    registers.to_string(args[1] as usize)?,
+                    registers.to_string(args[2] as usize)?,
+                    registers.to_string(args[3] as usize)?,
+                    registers.to_string(args[4] as usize)?,
+                    registers.to_string(args[5] as usize)?,
+                    registers.to_string(args[6] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             8 => {
-                let content = registers.to_string( args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers.to_string( args[1] as usize)?,
-                    registers.to_string( args[2] as usize)?,
-                    registers.to_string( args[3] as usize)?,
-                    registers.to_string( args[4] as usize)?,
-                    registers.to_string( args[5] as usize)?,
-                    registers.to_string( args[6] as usize)?,
-                    registers.to_string( args[7] as usize)?,
+                    registers.to_string(args[1] as usize)?,
+                    registers.to_string(args[2] as usize)?,
+                    registers.to_string(args[3] as usize)?,
+                    registers.to_string(args[4] as usize)?,
+                    registers.to_string(args[5] as usize)?,
+                    registers.to_string(args[6] as usize)?,
+                    registers.to_string(args[7] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
@@ -229,7 +229,8 @@ pub trait StackBasedCpu {
             }));
         }
         let registers: &RegisterSet = self.current_register_stack();
-        let content: Vec<i8> = registers.to_string( args[0] as usize)?
+        let content: Vec<i8> = registers
+            .to_string(args[0] as usize)?
             .into_bytes()
             .iter()
             .map(|v| v.clone() as i8)
@@ -425,31 +426,49 @@ impl Cpu {
                 }
                 Instruction::Ld8 { register, value } => {
                     let registers = self.current_register_stack();
-                    registers.set(register as usize, match value {
-                        Value::Register(source) => (registers.get(source as usize)? as u8) as u64,
-                        Value::Constant(value) => value,
-                    })?;
+                    registers.set(
+                        register as usize,
+                        match value {
+                            Value::Register(source) => {
+                                (registers.get(source as usize)? as u8) as u64
+                            }
+                            Value::Constant(value) => value,
+                        },
+                    )?;
                 }
                 Instruction::Ld16 { register, value } => {
                     let registers = self.current_register_stack();
-                    registers.set(register as usize, match value {
-                        Value::Register(source) => (registers.get(source as usize)? as u16) as u64,
-                        Value::Constant(value) => value,
-                    })?;
+                    registers.set(
+                        register as usize,
+                        match value {
+                            Value::Register(source) => {
+                                (registers.get(source as usize)? as u16) as u64
+                            }
+                            Value::Constant(value) => value,
+                        },
+                    )?;
                 }
                 Instruction::Ld32 { register, value } => {
                     let registers = self.current_register_stack();
-                    registers.set(register as usize, match value {
-                        Value::Register(source) => (registers.get(source as usize)? as u32) as u64,
-                        Value::Constant(value) => value,
-                    })?;
+                    registers.set(
+                        register as usize,
+                        match value {
+                            Value::Register(source) => {
+                                (registers.get(source as usize)? as u32) as u64
+                            }
+                            Value::Constant(value) => value,
+                        },
+                    )?;
                 }
                 Instruction::Ld64 { register, value } => {
                     let registers = self.current_register_stack();
-                    registers.set(register as usize, match value {
-                        Value::Register(source) => registers.get(source as usize)?,
-                        Value::Constant(value) => value,
-                    })?;
+                    registers.set(
+                        register as usize,
+                        match value {
+                            Value::Register(source) => registers.get(source as usize)?,
+                            Value::Constant(value) => value,
+                        },
+                    )?;
                 }
                 _ => panic!("Not implemented yet"),
             }

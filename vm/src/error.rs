@@ -17,8 +17,8 @@ pub enum ParsingError {
 #[derive(Debug, Fail)]
 pub enum RuntimeError {
     #[fail(
-    display = "Wrong number of arguments for {}: Expected {}, got {}.",
-    name, expected, got
+        display = "Wrong number of arguments for {}: Expected {}, got {}.",
+        name, expected, got
     )]
     WrongArgumentsNumber {
         name: String,

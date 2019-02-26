@@ -316,9 +316,8 @@ impl Instruction {
     fn parse_u16(stream: &mut Iterator<Item = u8>) -> Result<u16, Error> {
         let bytes: Vec<u8> = stream.take(2).collect();
         if bytes.len() == 2 {
-            let byte_pairs: &[u16] = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const u16, 1)
-            };
+            let byte_pairs: &[u16] =
+                unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u16, 1) };
             Ok(byte_pairs[0])
         } else {
             Err(Error::from(ParsingError::UnexpectedEndOfStream))
@@ -328,9 +327,8 @@ impl Instruction {
     fn parse_u32(stream: &mut Iterator<Item = u8>) -> Result<u32, Error> {
         let bytes: Vec<u8> = stream.take(4).collect();
         if bytes.len() == 4 {
-            let byte_pairs: &[u32] = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const u32, 1)
-            };
+            let byte_pairs: &[u32] =
+                unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, 1) };
             Ok(byte_pairs[0])
         } else {
             Err(Error::from(ParsingError::UnexpectedEndOfStream))
@@ -340,9 +338,8 @@ impl Instruction {
     fn parse_i64(stream: &mut Iterator<Item = u8>) -> Result<i64, Error> {
         let bytes: Vec<u8> = stream.take(8).collect();
         if bytes.len() == 8 {
-            let byte_groups: &[i64] = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const i64, 1)
-            };
+            let byte_groups: &[i64] =
+                unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i64, 1) };
             Ok(byte_groups[0])
         } else {
             Err(Error::from(ParsingError::U64LacksInformation))
@@ -352,9 +349,8 @@ impl Instruction {
     fn parse_u64(stream: &mut Iterator<Item = u8>) -> Result<u64, Error> {
         let bytes: Vec<u8> = stream.take(8).collect();
         if bytes.len() == 8 {
-            let byte_groups: &[u64] = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const u64, 1)
-            };
+            let byte_groups: &[u64] =
+                unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u64, 1) };
             Ok(byte_groups[0])
         } else {
             Err(Error::from(ParsingError::U64LacksInformation))
@@ -403,13 +399,15 @@ impl TryFrom<Vec<u8>> for Program {
                     &mut source
                 )),
                 0x05 => {
-                    let content = source.next().ok_or(Error::from(ParsingError::UnexpectedEndOfStream))?;
+                    let content = source
+                        .next()
+                        .ok_or(Error::from(ParsingError::UnexpectedEndOfStream))?;
                     let value = Value::Constant(content as u64);
                     Ok(Instruction::Ld8 {
                         value,
                         register: Instruction::parse_register(&mut source)?,
                     })
-                },
+                }
                 0x06 => {
                     let content = Instruction::parse_u16(&mut source)?;
                     let value = Value::Constant(content as u64);
@@ -417,7 +415,7 @@ impl TryFrom<Vec<u8>> for Program {
                         value,
                         register: Instruction::parse_register(&mut source)?,
                     })
-                },
+                }
                 0x07 => {
                     let content = Instruction::parse_u32(&mut source)?;
                     let value = Value::Constant(content as u64);
@@ -425,7 +423,7 @@ impl TryFrom<Vec<u8>> for Program {
                         value,
                         register: Instruction::parse_register(&mut source)?,
                     })
-                },
+                }
                 0x08 => {
                     let content = Instruction::parse_u64(&mut source)?;
                     let value = Value::Constant(content as u64);
@@ -433,7 +431,7 @@ impl TryFrom<Vec<u8>> for Program {
                         value,
                         register: Instruction::parse_register(&mut source)?,
                     })
-                },
+                }
                 0x09 => Ok(parse_instruction_from_register_to_value!(St8, &mut source)),
                 0x0a => Ok(parse_instruction_from_register_to_value!(St16, &mut source)),
                 0x0b => Ok(parse_instruction_from_register_to_value!(St32, &mut source)),
