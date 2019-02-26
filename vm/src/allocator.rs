@@ -1,7 +1,5 @@
 use failure::Error;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 #[derive(Debug, Fail)]
 pub(crate) enum AllocatorError {
@@ -69,16 +67,13 @@ impl FreeChunks {
 }
 
 pub struct Allocator {
-    memory: Rc<RefCell<Vec<u64>>>,
     free_chunks: FreeChunks,
     allocated_spaces: HashMap<usize, usize>,
 }
 
 impl Allocator {
-    pub(crate) fn new(memory: Rc<RefCell<Vec<u64>>>) -> Allocator {
-        let capacity = memory.borrow().capacity();
+    pub(crate) fn new(capacity: usize) -> Allocator {
         Allocator {
-            memory,
             allocated_spaces: HashMap::new(),
             free_chunks: FreeChunks::new(capacity),
         }
@@ -135,16 +130,13 @@ impl Allocator {
 #[cfg(test)]
 mod tests {
     use crate::allocator::Allocator;
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
     #[test]
     #[should_panic(
         expected = "called `Result::unwrap()` on an `Err` value: NotEnoughMemory { intended: 3 }"
     )]
     fn it_should_error_if_trying_to_allocate_more_space_than_memory_capacity() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(2)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(2);
         allocator.malloc(3).unwrap();
     }
 
@@ -153,24 +145,21 @@ mod tests {
         expected = "called `Result::unwrap()` on an `Err` value: NotEnoughMemory { intended: 1 }"
     )]
     fn it_should_error_if_trying_to_allocate_more_space_than_available() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(2)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(2);
         allocator.malloc(2).unwrap();
         allocator.malloc(1).unwrap();
     }
 
     #[test]
     fn it_should_return_the_first_address_available() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(2)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(2);
         assert_eq!(allocator.malloc(1).unwrap(), 0);
         assert_eq!(allocator.malloc(1).unwrap(), 1);
     }
 
     #[test]
     fn it_should_correctly_free_memory() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(2)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(2);
         let address = allocator.malloc(2).unwrap();
         allocator.free(address).unwrap();
         assert_eq!(allocator.malloc(2).unwrap(), 0);
@@ -181,16 +170,14 @@ mod tests {
         expected = "called `Result::unwrap()` on an `Err` value: AddressNotAllocated { address: 1 }"
     )]
     fn it_should_fail_when_freeing_unallocated_space() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(2)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(2);
         allocator.malloc(2).unwrap();
         allocator.free(1).unwrap();
     }
 
     #[test]
     fn it_should_defragment_memory() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(5)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(5);
         let address1 = allocator.malloc(2).unwrap();
         let address2 = allocator.malloc(2).unwrap();
         allocator.free(address1).unwrap();
@@ -201,8 +188,7 @@ mod tests {
 
     #[test]
     fn it_should_allocate_from_the_smallest_chunk_possible() {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(5)));
-        let mut allocator = Allocator::new(memory);
+        let mut allocator = Allocator::new(5);
         let address1 = allocator.malloc(2).unwrap();
         let address2 = allocator.malloc(2).unwrap();
         allocator.free(address1).unwrap();

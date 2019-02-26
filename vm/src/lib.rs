@@ -82,508 +82,20 @@ extern crate failure;
 #[macro_use]
 extern crate runtime_fmt;
 use crate::allocator::Allocator;
+use crate::error::RuntimeError;
+use crate::instruction::{Instruction, Program, Value};
+use crate::memory::Memory;
+use crate::register_set::RegisterSet;
 use failure::Error;
 use libc::scanf;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::iter::Iterator;
-use std::rc::Rc;
 
 mod allocator;
-
-pub struct Program(Vec<Instruction>);
-
-#[derive(Clone)]
-pub enum Instruction {
-    Fd {
-        name: String,
-        args: u64,
-        skip: u64,
-    },
-    Mov {
-        register: u8,
-        value: Value,
-    },
-    Ineg {
-        register: u8,
-    },
-    Iadd {
-        register: u8,
-        value: Value,
-    },
-    Isub {
-        register: u8,
-        value: Value,
-    },
-    Add {
-        register: u8,
-        value: Value,
-    },
-    Sub {
-        register: u8,
-        value: Value,
-    },
-    Umul {
-        register: u8,
-        value: Value,
-    },
-    Smul {
-        register: u8,
-        value: Value,
-    },
-    Urem {
-        register: u8,
-        value: Value,
-    },
-    Srem {
-        register: u8,
-        value: Value,
-    },
-    Udiv {
-        register: u8,
-        value: Value,
-    },
-    Sdiv {
-        register: u8,
-        value: Value,
-    },
-    And {
-        register: u8,
-        value: Value,
-    },
-    Or {
-        register: u8,
-        value: Value,
-    },
-    Xor {
-        register: u8,
-        value: Value,
-    },
-    Shl {
-        register: u8,
-        value: Value,
-    },
-    Lshr {
-        register: u8,
-        value: Value,
-    },
-    Ashr {
-        register: u8,
-        value: Value,
-    },
-    Fadd {
-        register: u8,
-        value: Value,
-    },
-    Fsub {
-        register: u8,
-        value: Value,
-    },
-    Fmul {
-        register: u8,
-        value: Value,
-    },
-    Frem {
-        register: u8,
-        value: Value,
-    },
-    Fdiv {
-        register: u8,
-        value: Value,
-    },
-    Eq {
-        register: u8,
-        value: Value,
-    },
-    Ne {
-        register: u8,
-        value: Value,
-    },
-    Slt {
-        register: u8,
-        value: Value,
-    },
-    Sle {
-        register: u8,
-        value: Value,
-    },
-    Sgt {
-        register: u8,
-        value: Value,
-    },
-    Sge {
-        register: u8,
-        value: Value,
-    },
-    Feq {
-        register: u8,
-        value: Value,
-    },
-    Fne {
-        register: u8,
-        value: Value,
-    },
-    Flt {
-        register: u8,
-        value: Value,
-    },
-    Fle {
-        register: u8,
-        value: Value,
-    },
-    Fgt {
-        register: u8,
-        value: Value,
-    },
-    Fge {
-        register: u8,
-        value: Value,
-    },
-    Ult {
-        register: u8,
-        value: Value,
-    },
-    Ule {
-        register: u8,
-        value: Value,
-    },
-    Ugt {
-        register: u8,
-        value: Value,
-    },
-    Uge {
-        register: u8,
-        value: Value,
-    },
-    Ld8 {
-        register: u8,
-        value: Value,
-    },
-    Ld16 {
-        register: u8,
-        value: Value,
-    },
-    Ld32 {
-        register: u8,
-        value: Value,
-    },
-    Ld64 {
-        register: u8,
-        value: Value,
-    },
-    St8 {
-        register: u8,
-        value: Value,
-    },
-    St16 {
-        register: u8,
-        value: Value,
-    },
-    St32 {
-        register: u8,
-        value: Value,
-    },
-    St64 {
-        register: u8,
-        value: Value,
-    },
-    Jmp {
-        offset: i64,
-    },
-    Jz {
-        offset: i64,
-        register: u8,
-    },
-    Jnz {
-        offset: i64,
-        register: u8,
-    },
-    Lea {
-        destiny: u8,
-        source: u8,
-    },
-    Leave,
-    Ret {
-        value: Value,
-    },
-    Gg {
-        string: String,
-        register: u8,
-    },
-    Sg {
-        string: String,
-        register: u8,
-    },
-    Css {
-        string: String,
-        register: u8,
-    },
-    CssDyn {
-        destiny: u8,
-        source: u8,
-    },
-    Call {
-        return_register: u8,
-        arguments: [Option<u8>; 8],
-    },
-}
-
-macro_rules! parse_instruction_with_register_and_offset {
-    ($instr: ident, $stream: expr) => {
-        Instruction::$instr {
-            offset: Instruction::parse_i64($stream)?,
-            register: Instruction::parse_register($stream)?,
-        }
-    };
-}
-
-macro_rules! parse_instruction_with_register {
-    ($instr: ident, $stream: expr) => {
-        Instruction::$instr {
-            register: Instruction::parse_register($stream)?,
-        }
-    };
-}
-
-macro_rules! parse_instruction_from_register_to_register {
-    ($instr: ident, $stream: expr) => {
-        Instruction::$instr {
-            source: Instruction::parse_register($stream)?,
-            destiny: Instruction::parse_register($stream)?,
-        }
-    };
-}
-
-macro_rules! parse_instruction_from_register_to_value {
-    ($instr: ident, $stream: expr) => {
-        Instruction::$instr {
-            value: Instruction::parse_value($stream)?,
-            register: Instruction::parse_register($stream)?,
-        }
-    };
-}
-
-macro_rules! parse_instruction_with_string_and_register {
-    ($instr: ident, $stream: expr) => {
-        Instruction::$instr {
-            string: Instruction::parse_string($stream)?,
-            register: Instruction::parse_register($stream)?,
-        }
-    };
-}
-
-impl Instruction {
-    fn parse_fd(stream: &mut Iterator<Item = u8>) -> Result<Instruction, Error> {
-        let name = Instruction::parse_string(stream)?;
-        let args = Instruction::parse_u64(stream)?;
-        let skip = Instruction::parse_u64(stream)?;
-        Ok(Instruction::Fd { name, args, skip })
-    }
-
-    fn parse_call(stream: &mut Iterator<Item = u8>, nargs: usize) -> Result<Instruction, Error> {
-        let return_register = Instruction::parse_register(stream)?;
-        let mut arguments = [None; 8];
-        for i in 0..(nargs - 1) {
-            arguments[i] = Some(Instruction::parse_register(stream)?);
-        }
-        Ok(Instruction::Call {
-            arguments,
-            return_register,
-        })
-    }
-
-    fn parse_string(stream: &mut Iterator<Item = u8>) -> Result<String, Error> {
-        let string_length = stream
-            .next()
-            .ok_or(Error::from(ParsingError::StringWithoutLenght))?
-            as usize;
-        let string_bytes: Vec<u8> = stream.take(string_length).collect();
-        let name = String::from_utf8(string_bytes)?;
-        Ok(name)
-    }
-
-    fn parse_i64(stream: &mut Iterator<Item = u8>) -> Result<i64, Error> {
-        let bytes: Vec<u8> = stream.take(8).collect();
-        if bytes.len() == 8 {
-            let mut current_shift: u64 = 7 * 8;
-            Ok(bytes.into_iter().fold(0i64, |acc, n| {
-                let r = acc + ((n as i64) << current_shift);
-                current_shift = current_shift.wrapping_sub(8);
-                r
-            }))
-        } else {
-            Err(Error::from(ParsingError::U64LacksInformation))
-        }
-    }
-
-    fn parse_u64(stream: &mut Iterator<Item = u8>) -> Result<u64, Error> {
-        let bytes: Vec<u8> = stream.take(8).collect();
-        if bytes.len() == 8 {
-            let mut current_shift: u64 = 7 * 8;
-            Ok(bytes.into_iter().fold(0u64, |acc, n| {
-                let r = acc + ((n as u64) << current_shift);
-                current_shift = current_shift.wrapping_sub(8);
-                r
-            }))
-        } else {
-            Err(Error::from(ParsingError::U64LacksInformation))
-        }
-    }
-
-    fn parse_register(stream: &mut Iterator<Item = u8>) -> Result<u8, Error> {
-        stream
-            .next()
-            .ok_or(Error::from(ParsingError::RegisterExpectedNothingFound))
-    }
-
-    fn parse_value(stream: &mut Iterator<Item = u8>) -> Result<Value, Error> {
-        let flag = stream
-            .next()
-            .ok_or(Error::from(ParsingError::ValueWithNoFlag))?;
-        if flag == 0 {
-            Instruction::parse_register(stream).map(|v| Value::Register(v))
-        } else {
-            Instruction::parse_u64(stream).map(|c| Value::Constant(c))
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum Value {
-    Constant(u64),
-    Register(u8),
-}
-
-#[derive(Debug, Fail)]
-pub enum ParsingError {
-    #[fail(display = "The string being parsed doesn't have lenght")]
-    StringWithoutLenght,
-    #[fail(display = "There weren't enough bytes to form a u64")]
-    U64LacksInformation,
-    #[fail(display = "Type flag not present when parsing value")]
-    ValueWithNoFlag,
-    #[fail(display = "Empty strean when trying to parse a register")]
-    RegisterExpectedNothingFound,
-    #[fail(display = "Invalid instruction byte")]
-    InvalidInstructionByte,
-}
-
-#[derive(Debug, Fail)]
-pub enum RuntimeError {
-    #[fail(
-        display = "Wrong number of arguments for {}: Expected {}, got {}.",
-        name, expected, got
-    )]
-    WrongArgumentsNumber {
-        name: String,
-        expected: usize,
-        got: usize,
-    },
-    #[fail(display = "Program ended with code {}", errno)]
-    ProgramEnded { errno: u64 },
-    #[fail(display = "Global not found {}", name)]
-    GlobalNotFound { name: String },
-}
-
-impl TryFrom<Vec<u8>> for Program {
-    type Error = Error;
-    fn try_from(instructions: Vec<u8>) -> Result<Program, Error> {
-        let mut source = instructions.into_iter();
-        let mut instructions = Vec::new();
-        let mut next = source.next();
-        while next.is_some() {
-            let byte = next.expect("can't happen");
-            let instruction = match byte {
-                0x00 => Instruction::parse_fd(&mut source),
-                0x01 => Ok(parse_instruction_from_register_to_value!(Mov, &mut source)),
-                0x02 => Ok(parse_instruction_with_string_and_register!(Gg, &mut source)),
-                0x03 => Ok(parse_instruction_with_string_and_register!(Sg, &mut source)),
-                0x04 => Ok(parse_instruction_with_string_and_register!(
-                    Css,
-                    &mut source
-                )),
-                0x05 => Ok(parse_instruction_from_register_to_value!(Ld8, &mut source)),
-                0x06 => Ok(parse_instruction_from_register_to_value!(Ld16, &mut source)),
-                0x07 => Ok(parse_instruction_from_register_to_value!(Ld32, &mut source)),
-                0x08 => Ok(parse_instruction_from_register_to_value!(Ld64, &mut source)),
-                0x09 => Ok(parse_instruction_from_register_to_value!(St8, &mut source)),
-                0x0a => Ok(parse_instruction_from_register_to_value!(St16, &mut source)),
-                0x0b => Ok(parse_instruction_from_register_to_value!(St32, &mut source)),
-                0x0c => Ok(parse_instruction_from_register_to_value!(St64, &mut source)),
-                0x0d => Ok(parse_instruction_from_register_to_register!(
-                    Lea,
-                    &mut source
-                )),
-                0x0e => Ok(parse_instruction_from_register_to_value!(Iadd, &mut source)),
-                0x0f => Ok(parse_instruction_from_register_to_value!(Isub, &mut source)),
-                0x10 => Ok(parse_instruction_from_register_to_value!(Smul, &mut source)),
-                0x11 => Ok(parse_instruction_from_register_to_value!(Umul, &mut source)),
-                0x12 => Ok(parse_instruction_from_register_to_value!(Srem, &mut source)),
-                0x13 => Ok(parse_instruction_from_register_to_value!(Urem, &mut source)),
-                0x14 => Ok(parse_instruction_from_register_to_value!(Sdiv, &mut source)),
-                0x15 => Ok(parse_instruction_from_register_to_value!(Udiv, &mut source)),
-                0x16 => Ok(parse_instruction_from_register_to_value!(And, &mut source)),
-                0x17 => Ok(parse_instruction_from_register_to_value!(Or, &mut source)),
-                0x18 => Ok(parse_instruction_from_register_to_value!(Xor, &mut source)),
-                0x19 => Ok(parse_instruction_from_register_to_value!(Shl, &mut source)),
-                0x1a => Ok(parse_instruction_from_register_to_value!(Lshr, &mut source)),
-                0x1b => Ok(parse_instruction_from_register_to_value!(Ashr, &mut source)),
-                0x1c => Ok(parse_instruction_with_register!(Ineg, &mut source)),
-                0x1d => Ok(parse_instruction_from_register_to_value!(Fadd, &mut source)),
-                0x1e => Ok(parse_instruction_from_register_to_value!(Fsub, &mut source)),
-                0x1f => Ok(parse_instruction_from_register_to_value!(Fmul, &mut source)),
-                0x20 => Ok(parse_instruction_from_register_to_value!(Fdiv, &mut source)),
-                0x21 => Ok(parse_instruction_from_register_to_value!(Frem, &mut source)),
-                0x22 => Ok(parse_instruction_from_register_to_value!(Eq, &mut source)),
-                0x23 => Ok(parse_instruction_from_register_to_value!(Ne, &mut source)),
-                0x24 => Ok(parse_instruction_from_register_to_value!(Slt, &mut source)),
-                0x25 => Ok(parse_instruction_from_register_to_value!(Sle, &mut source)),
-                0x26 => Ok(parse_instruction_from_register_to_value!(Sgt, &mut source)),
-                0x27 => Ok(parse_instruction_from_register_to_value!(Sge, &mut source)),
-                0x28 => Ok(parse_instruction_from_register_to_value!(Ult, &mut source)),
-                0x29 => Ok(parse_instruction_from_register_to_value!(Ule, &mut source)),
-                0x2a => Ok(parse_instruction_from_register_to_value!(Ugt, &mut source)),
-                0x2b => Ok(parse_instruction_from_register_to_value!(Uge, &mut source)),
-                0x2c => Ok(parse_instruction_from_register_to_value!(Feq, &mut source)),
-                0x2d => Ok(parse_instruction_from_register_to_value!(Fne, &mut source)),
-                0x2e => Ok(parse_instruction_from_register_to_value!(Flt, &mut source)),
-                0x2f => Ok(parse_instruction_from_register_to_value!(Fle, &mut source)),
-                0x30 => Ok(parse_instruction_from_register_to_value!(Fgt, &mut source)),
-                0x31 => Ok(parse_instruction_from_register_to_value!(Fge, &mut source)),
-                0x32 => Ok(Instruction::Jmp {
-                    offset: Instruction::parse_i64(&mut source)?,
-                }),
-                0x33 => Ok(parse_instruction_with_register_and_offset!(
-                    Jnz,
-                    &mut source
-                )),
-                0x34 => Ok(parse_instruction_with_register_and_offset!(Jz, &mut source)),
-                0x35 => Instruction::parse_call(&mut source, 0),
-                0x36 => Instruction::parse_call(&mut source, 1),
-                0x37 => Instruction::parse_call(&mut source, 2),
-                0x38 => Instruction::parse_call(&mut source, 3),
-                0x39 => Instruction::parse_call(&mut source, 4),
-                0x3a => Instruction::parse_call(&mut source, 5),
-                0x3b => Instruction::parse_call(&mut source, 6),
-                0x3c => Instruction::parse_call(&mut source, 7),
-                0x3d => Instruction::parse_call(&mut source, 8),
-                0x3e => Ok(Instruction::Ret {
-                    value: Instruction::parse_value(&mut source)?,
-                }),
-                0x3f => Ok(Instruction::Leave),
-                0x40 => Ok(parse_instruction_from_register_to_register!(
-                    CssDyn,
-                    &mut source
-                )),
-                _ => Err(Error::from(ParsingError::InvalidInstructionByte)),
-            }?;
-            instructions.push(instruction);
-            next = source.next();
-        }
-        Ok(Program(instructions))
-    }
-}
+mod error;
+mod instruction;
+mod memory;
+mod register_set;
 
 pub type CpuFn = Box<Fn(&mut StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
 pub enum Function {
@@ -591,24 +103,15 @@ pub enum Function {
     UserDefined(usize, u64, u64),
 }
 
-fn registers_to_string(registers: &[u64; 256], index: usize) -> Result<String, Error> {
-    let u8_contents = registers[index..]
-        .iter()
-        .map(|n| extract_bytes(n.clone()).to_vec().into_iter())
-        .flatten()
-        .collect::<Vec<u8>>();
-    String::from_utf8(u8_contents).map_err(|e| Error::from(e))
-}
-
 pub trait StackBasedCpu {
-    fn current_register_stack(&mut self) -> &mut [u64; 256];
+    fn current_register_stack(&mut self) -> &mut RegisterSet;
 
     fn get_allocator(&mut self) -> &mut Allocator;
 
     fn puts(&mut self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() == 1 {
-            let registers: &[u64; 256] = self.current_register_stack();
-            registers_to_string(registers, args[0] as usize).map(|s| {
+            let registers: &RegisterSet = self.current_register_stack();
+            registers.to_string(args[0] as usize).map(|s| {
                 println!("{}", s);
                 0
             })
@@ -622,89 +125,89 @@ pub trait StackBasedCpu {
     }
 
     fn printf(&mut self, args: Vec<u8>) -> Result<u64, Error> {
-        let registers: &[u64; 256] = self.current_register_stack();
+        let registers: &RegisterSet = self.current_register_stack();
         match args.len() {
             1 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string(args[0] as usize)?;
                 rt_println!(content).unwrap();
                 Ok(0)
             }
             2 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
-                rt_println!(content, registers_to_string(registers, args[1] as usize)?).unwrap();
+                let content = registers.to_string(args[0] as usize)?;
+                rt_println!(content, registers.to_string( args[1] as usize)?).unwrap();
                 Ok(0)
             }
             3 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string( args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers_to_string(registers, args[1] as usize)?,
-                    registers_to_string(registers, args[2] as usize)?,
+                    registers.to_string( args[1] as usize)?,
+                    registers.to_string( args[2] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             4 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string( args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers_to_string(registers, args[1] as usize)?,
-                    registers_to_string(registers, args[2] as usize)?,
-                    registers_to_string(registers, args[3] as usize)?,
+                    registers.to_string( args[1] as usize)?,
+                    registers.to_string( args[2] as usize)?,
+                    registers.to_string( args[3] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             5 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string( args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers_to_string(registers, args[1] as usize)?,
-                    registers_to_string(registers, args[2] as usize)?,
-                    registers_to_string(registers, args[3] as usize)?,
-                    registers_to_string(registers, args[4] as usize)?,
+                    registers.to_string( args[1] as usize)?,
+                    registers.to_string( args[2] as usize)?,
+                    registers.to_string( args[3] as usize)?,
+                    registers.to_string( args[4] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             6 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string( args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers_to_string(registers, args[1] as usize)?,
-                    registers_to_string(registers, args[2] as usize)?,
-                    registers_to_string(registers, args[3] as usize)?,
-                    registers_to_string(registers, args[4] as usize)?,
-                    registers_to_string(registers, args[5] as usize)?,
+                    registers.to_string( args[1] as usize)?,
+                    registers.to_string( args[2] as usize)?,
+                    registers.to_string( args[3] as usize)?,
+                    registers.to_string( args[4] as usize)?,
+                    registers.to_string( args[5] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             7 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string( args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers_to_string(registers, args[1] as usize)?,
-                    registers_to_string(registers, args[2] as usize)?,
-                    registers_to_string(registers, args[3] as usize)?,
-                    registers_to_string(registers, args[4] as usize)?,
-                    registers_to_string(registers, args[5] as usize)?,
-                    registers_to_string(registers, args[6] as usize)?,
+                    registers.to_string( args[1] as usize)?,
+                    registers.to_string( args[2] as usize)?,
+                    registers.to_string( args[3] as usize)?,
+                    registers.to_string( args[4] as usize)?,
+                    registers.to_string( args[5] as usize)?,
+                    registers.to_string( args[6] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
             }
             8 => {
-                let content = registers_to_string(registers, args[0] as usize)?;
+                let content = registers.to_string( args[0] as usize)?;
                 rt_println!(
                     content,
-                    registers_to_string(registers, args[1] as usize)?,
-                    registers_to_string(registers, args[2] as usize)?,
-                    registers_to_string(registers, args[3] as usize)?,
-                    registers_to_string(registers, args[4] as usize)?,
-                    registers_to_string(registers, args[5] as usize)?,
-                    registers_to_string(registers, args[6] as usize)?,
-                    registers_to_string(registers, args[7] as usize)?,
+                    registers.to_string( args[1] as usize)?,
+                    registers.to_string( args[2] as usize)?,
+                    registers.to_string( args[3] as usize)?,
+                    registers.to_string( args[4] as usize)?,
+                    registers.to_string( args[5] as usize)?,
+                    registers.to_string( args[6] as usize)?,
+                    registers.to_string( args[7] as usize)?,
                 )
                 .unwrap();
                 Ok(0)
@@ -725,8 +228,8 @@ pub trait StackBasedCpu {
                 got: 0,
             }));
         }
-        let registers: &[u64; 256] = self.current_register_stack();
-        let content: Vec<i8> = registers_to_string(registers, args[0] as usize)?
+        let registers: &RegisterSet = self.current_register_stack();
+        let content: Vec<i8> = registers.to_string( args[0] as usize)?
             .into_bytes()
             .iter()
             .map(|v| v.clone() as i8)
@@ -810,7 +313,7 @@ pub trait StackBasedCpu {
             }))
         } else {
             Err(Error::from(RuntimeError::ProgramEnded {
-                errno: self.current_register_stack()[0].clone(),
+                errno: self.current_register_stack().get(0)?,
             }))
         }
     }
@@ -823,7 +326,7 @@ pub trait StackBasedCpu {
                 got: args.len(),
             }))
         } else {
-            let size = self.current_register_stack()[0].clone() as usize;
+            let size = self.current_register_stack().get(0)? as usize;
             self.get_allocator().malloc(size).map(|v| v as u64)
         }
     }
@@ -836,7 +339,7 @@ pub trait StackBasedCpu {
                 got: args.len(),
             }))
         } else {
-            let address = self.current_register_stack()[0].clone() as usize;
+            let address = self.current_register_stack().get(0)? as usize;
             self.get_allocator().free(address).map(|_| 0)
         }
     }
@@ -846,22 +349,14 @@ pub struct Cpu {
     allocator: Allocator,
     pub(crate) functions: HashMap<String, Function>,
     globals: HashMap<String, u64>,
-    memory: Rc<RefCell<Vec<u64>>>,
-    register_stack: Vec<[u64; 256]>,
-}
-
-fn extract_bytes(n: u64) -> [u8; 8] {
-    let mut res = [0; 8];
-    for i in 0..7 {
-        res[i] = (n >> (7 - i)) as u8;
-    }
-    res
+    memory: Memory,
+    register_stack: Vec<RegisterSet>,
 }
 
 impl Cpu {
-    pub fn new(capacity: usize) -> Cpu {
-        let memory = Rc::new(RefCell::new(Vec::with_capacity(capacity)));
-        let allocator = Allocator::new(memory.clone());
+    pub fn new(capacity: usize) -> Result<Cpu, Error> {
+        let memory = Memory::new(capacity);
+        let allocator = Allocator::new(capacity);
         let mut functions = HashMap::new();
         functions.insert(
             "puts".to_owned(),
@@ -883,13 +378,16 @@ impl Cpu {
             "free".to_owned(),
             Function::Native(Box::new(|cpu, args| cpu.free(args))),
         );
-        Cpu {
+        let mut cpu = Cpu {
             allocator,
             functions,
             memory,
             globals: HashMap::new(),
-            register_stack: vec![[0; 256]],
-        }
+            register_stack: vec![],
+        };
+        let register_set = cpu.create_new_register_set()?;
+        cpu.register_stack.push(register_set);
+        Ok(cpu)
     }
 
     pub fn execute(&mut self, program: Program) -> Result<(), Error> {
@@ -902,7 +400,7 @@ impl Cpu {
                         .insert(name.clone(), Function::UserDefined(i, args, skip));
                     i += skip as usize;
                 }
-                Instruction::Mov { register, value } => self.value_to_register(register, value),
+                Instruction::Mov { register, value } => self.value_to_register(register, value)?,
                 Instruction::Gg { string, register } => {
                     let value = self
                         .globals
@@ -911,12 +409,47 @@ impl Cpu {
                             name: string.clone(),
                         }))?
                         .clone();
-                    let mut registers = self.current_register_stack();
-                    registers[register as usize] = value;
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, value)?;
                 }
                 Instruction::Sg { string, register } => {
-                    let value = self.current_register_stack()[register as usize];
+                    let value = self.current_register_stack().get(register as usize)?;
                     self.globals.insert(string, value);
+                }
+                Instruction::Css { string, register } => {
+                    let string_size = (string.len() as f64 / 8f64).ceil() as usize;
+                    let address = self.allocator.malloc(string_size)?;
+                    self.memory.copy_u8_vector(string.as_bytes(), address);
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, address as u64)?;
+                }
+                Instruction::Ld8 { register, value } => {
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, match value {
+                        Value::Register(source) => (registers.get(source as usize)? as u8) as u64,
+                        Value::Constant(value) => value,
+                    })?;
+                }
+                Instruction::Ld16 { register, value } => {
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, match value {
+                        Value::Register(source) => (registers.get(source as usize)? as u16) as u64,
+                        Value::Constant(value) => value,
+                    })?;
+                }
+                Instruction::Ld32 { register, value } => {
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, match value {
+                        Value::Register(source) => (registers.get(source as usize)? as u32) as u64,
+                        Value::Constant(value) => value,
+                    })?;
+                }
+                Instruction::Ld64 { register, value } => {
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, match value {
+                        Value::Register(source) => registers.get(source as usize)?,
+                        Value::Constant(value) => value,
+                    })?;
                 }
                 _ => panic!("Not implemented yet"),
             }
@@ -925,22 +458,32 @@ impl Cpu {
         Ok(())
     }
 
-    fn value_to_register(&mut self, register: u8, value: Value) {
+    fn value_to_register(&mut self, register: u8, value: Value) -> Result<(), Error> {
         let registers = self.current_register_stack();
         match value {
             Value::Constant(v) => {
-                registers[register as usize] = v;
+                registers.set(register as usize, v)?;
             }
             Value::Register(source) => {
-                let source_value = registers[source as usize];
-                registers[register as usize] = source_value;
+                let source_value = registers.get(source as usize)?;
+                registers.set(register as usize, source_value)?;
             }
-        }
+        };
+        Ok(())
+    }
+
+    fn create_new_register_set(&mut self) -> Result<RegisterSet, Error> {
+        let address = self.allocator.malloc(256)?;
+        Ok(RegisterSet {
+            address,
+            memory: self.memory.clone(),
+            size: 256,
+        })
     }
 }
 
 impl StackBasedCpu for Cpu {
-    fn current_register_stack(&mut self) -> &mut [u64; 256] {
+    fn current_register_stack(&mut self) -> &mut RegisterSet {
         self.register_stack.last_mut().unwrap()
     }
 
@@ -964,7 +507,7 @@ mod tests {
             Instruction::Leave,
         ];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
         let test = cpu.functions.get("test").unwrap();
         match test {
@@ -984,10 +527,10 @@ mod tests {
             value: Value::Constant(42),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
         let registers = cpu.current_register_stack();
-        assert_eq!(registers[0], 42);
+        assert_eq!(registers.get(0).unwrap(), 42);
     }
 
     #[test]
@@ -997,14 +540,14 @@ mod tests {
             value: Value::Register(1),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(260).unwrap();
         {
-            let mut registers = cpu.current_register_stack();
-            registers[1] = 42;
+            let registers = cpu.current_register_stack();
+            registers.set(1, 42).unwrap();
         }
         cpu.execute(program).unwrap();
         let registers = cpu.current_register_stack();
-        assert_eq!(registers[0], 42);
+        assert_eq!(registers.get(0).unwrap(), 42);
     }
 
     #[test]
@@ -1014,11 +557,11 @@ mod tests {
             register: 0,
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(260).unwrap();
         cpu.globals.insert("test".to_owned(), 42);
         cpu.execute(program).unwrap();
         let registers = cpu.current_register_stack();
-        assert_eq!(registers[0], 42);
+        assert_eq!(registers.get(0).unwrap(), 42);
     }
 
     #[test]
@@ -1031,7 +574,7 @@ mod tests {
             register: 0,
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
     }
 
@@ -1042,10 +585,10 @@ mod tests {
             register: 0,
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(0);
+        let mut cpu = Cpu::new(260).unwrap();
         {
-            let mut registers = cpu.current_register_stack();
-            registers[0] = 42;
+            let registers = cpu.current_register_stack();
+            registers.set(0, 42).unwrap();
         }
         cpu.execute(program).unwrap();
         let global = cpu.globals.get("test").unwrap().clone();
