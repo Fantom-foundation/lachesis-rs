@@ -6,14 +6,14 @@ use failure::Error;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::FromIterator;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq, Serialize)]
 pub enum OperaEventType {
     Clotho(Option<usize>),
     Root,
     Undefined,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct OperaEvent {
     pub event: Event<ParentsList>,
     pub flag_table: HashSet<EventHash>,
@@ -221,7 +221,18 @@ impl Opera {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct OperaWire {
     graph: BTreeMap<EventHash, OperaEvent>,
     pub lamport_timestamp: usize,
+}
+
+
+impl OperaWire {
+    pub fn into_opera(self) -> Opera {
+        Opera {
+            graph: HashMap::from_iter(self.graph.into_iter()),
+            lamport_timestamp: self.lamport_timestamp,
+        }
+    }
 }

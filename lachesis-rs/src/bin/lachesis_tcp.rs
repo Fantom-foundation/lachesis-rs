@@ -1,21 +1,21 @@
 extern crate lachesis_rs;
 
 use lachesis_rs::tcp_server::{TcpApp, TcpNode, TcpPeer};
-use lachesis_rs::Peer;
 use std::env::args;
 use std::sync::Arc;
 
 const BASE_PORT: usize = 9000;
-const USAGE: &'static str = "Usage: tcp-client [number of nodes]";
+const USAGE: &'static str = "Usage: tcp-client [number of nodes] [consensus-algorithm]";
 
 fn main() {
     env_logger::init();
     let args: Vec<String> = args().collect();
-    if args.len() != 2 {
+    if args.len() != 3 {
         panic!(USAGE);
     }
     let mut rng = ring::rand::SystemRandom::new();
     let n_nodes = args[1].parse::<usize>().unwrap();
+    let algorithm = args[2].clone();
     let mut nodes = Vec::with_capacity(n_nodes);
     let mut peers = Vec::with_capacity(n_nodes);
     for i in 0..n_nodes {
@@ -29,7 +29,7 @@ fn main() {
     }
     for node in nodes.iter() {
         for peer in peers.iter() {
-            if peer.id().clone() != node.node.get_id() {
+            if peer.id.clone() != node.node.get_id() {
                 node.node.add_node(Arc::new(peer.clone())).unwrap();
             }
         }

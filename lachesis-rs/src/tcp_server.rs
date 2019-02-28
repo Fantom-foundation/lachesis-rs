@@ -1,5 +1,7 @@
 use crate::event::event_hash::EventHash;
 use crate::hashgraph::{BTreeHashgraph, HashgraphWire};
+use crate::lachesis::Lachesis;
+use crate::lachesis::opera::{Opera, OperaWire};
 use crate::node::Node;
 use crate::peer::{Peer, PeerId};
 use crate::swirlds::Swirlds;
@@ -13,6 +15,12 @@ use std::sync::Arc;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::Duration;
 
+fn create_lachesis_node(rng: &mut SystemRandom) -> Result<Lachesis<TcpPeer>, Error> {
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng)?;
+    let kp = signature::Ed25519KeyPair::from_pkcs8(untrusted::Input::from(&pkcs8_bytes))?;
+    Ok(Lachesis::new(3, kp))
+}
+
 fn create_swirlds_node(rng: &mut SystemRandom) -> Result<Swirlds<TcpPeer, BTreeHashgraph>, Error> {
     let hashgraph = BTreeHashgraph::new();
     let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(rng)?;
@@ -23,6 +31,16 @@ fn create_swirlds_node(rng: &mut SystemRandom) -> Result<Swirlds<TcpPeer, BTreeH
 pub struct TcpNode<N: Node> {
     pub address: String,
     pub node: N,
+}
+
+impl TcpNode<Lachesis<TcpPeer>> {
+    pub fn new_lachesis(
+        rng: &mut SystemRandom,
+        address: String,
+    ) -> Result<TcpNode<Lachesis<TcpPeer>>, Error> {
+        let node = create_lachesis_node(rng)?;
+        Ok(TcpNode { address, node })
+    }
 }
 
 impl TcpNode<Swirlds<TcpPeer, BTreeHashgraph>> {
@@ -48,7 +66,7 @@ impl Peer<BTreeHashgraph> for TcpPeer {
         _k: Option<&BTreeHashgraph>,
     ) -> Result<(EventHash, BTreeHashgraph), Error> {
         let mut buffer = Vec::new();
-        let mut stream = TcpStream::connect(&self.address())?;
+        let mut stream = TcpStream::connect(&self.address.clone())?;
         let mut last_received = 0;
         while last_received == 0 {
             last_received = stream.read_to_end(&mut buffer)?;
@@ -56,6 +74,29 @@ impl Peer<BTreeHashgraph> for TcpPeer {
         let (eh, wire): (EventHash, HashgraphWire) = bincode::deserialize(&buffer)?;
         let hashgraph = BTreeHashgraph::from(wire);
         Ok((eh, hashgraph))
+    }
+    fn address(&self) -> String {
+        self.address.clone()
+    }
+    fn id(&self) -> &PeerId {
+        &self.id
+    }
+}
+
+impl Peer<Opera> for TcpPeer {
+    fn get_sync(
+        &self,
+        _pk: PeerId,
+        _k: Option<&Opera>,
+    ) -> Result<(EventHash, Opera), Error> {
+        let mut buffer = Vec::new();
+        let mut stream = TcpStream::connect(&self.address.clone())?;
+        let mut last_received = 0;
+        while last_received == 0 {
+            last_received = stream.read_to_end(&mut buffer)?;
+        }
+        let (eh, wire): (EventHash, OperaWire) = bincode::deserialize(&buffer)?;
+        Ok((eh, wire.into_opera()))
     }
     fn address(&self) -> String {
         self.address.clone()

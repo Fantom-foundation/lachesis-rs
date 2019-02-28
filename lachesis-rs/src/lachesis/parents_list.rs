@@ -2,7 +2,7 @@ use crate::errors::ParentsError;
 use crate::event::{event_hash::EventHash, parents::Parents};
 use failure::Error;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ParentsList(pub Vec<EventHash>);
 
 impl Parents for ParentsList {
