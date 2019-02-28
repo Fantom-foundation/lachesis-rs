@@ -22,7 +22,10 @@ impl Memory {
 
     pub(crate) fn copy_u8_vector(&self, vector: &[u8], address: usize) {
         let memory: &mut [u8] = unsafe {
-            std::slice::from_raw_parts_mut(self.0.borrow_mut().as_ptr() as *mut u8, vector.len())
+            std::slice::from_raw_parts_mut(
+                self.0.borrow_mut()[address..].as_ptr() as *mut u8,
+                vector.len(),
+            )
         };
         memory.copy_from_slice(vector);
     }
@@ -33,7 +36,10 @@ impl Memory {
 
     pub(crate) fn copy_u16_vector(&self, vector: &[u16], address: usize) {
         let memory: &mut [u16] = unsafe {
-            std::slice::from_raw_parts_mut(self.0.borrow_mut().as_ptr() as *mut u16, vector.len())
+            std::slice::from_raw_parts_mut(
+                self.0.borrow_mut()[address..].as_ptr() as *mut u16,
+                vector.len(),
+            )
         };
         memory.copy_from_slice(vector);
     }
@@ -44,7 +50,10 @@ impl Memory {
 
     pub(crate) fn copy_u32_vector(&self, vector: &[u32], address: usize) {
         let memory: &mut [u32] = unsafe {
-            std::slice::from_raw_parts_mut(self.0.borrow_mut().as_ptr() as *mut u32, vector.len())
+            std::slice::from_raw_parts_mut(
+                self.0.borrow_mut()[address..].as_ptr() as *mut u32,
+                vector.len(),
+            )
         };
         memory.copy_from_slice(vector);
     }
@@ -69,71 +78,79 @@ mod tests {
     #[test]
     fn it_should_copy_a_u8_aray() {
         let data = &[1u8, 1, 1, 1, 1, 1, 1, 1];
-        let memory = Memory::new(2);
-        memory.copy_u8_vector(data, 0);
-        assert_eq!(memory.get().borrow()[0], 72340172838076673);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.copy_u8_vector(data, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 72340172838076673);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u8() {
-        let memory = Memory::new(2);
-        memory.get().borrow_mut()[0] = 257;
-        memory.copy_u8(42, 0);
-        assert_eq!(memory.get().borrow()[0], 298);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.get().borrow_mut()[1] = 257;
+        memory.copy_u8(42, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 298);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u16_aray() {
         let data = &[1u16, 1, 1, 1];
-        let memory = Memory::new(2);
-        memory.copy_u16_vector(data, 0);
-        assert_eq!(memory.get().borrow()[0], 281479271743489);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.copy_u16_vector(data, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 281479271743489);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u16() {
-        let memory = Memory::new(2);
-        memory.get().borrow_mut()[0] = 65537;
-        memory.copy_u16(42, 0);
-        assert_eq!(memory.get().borrow()[0], 65578);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.get().borrow_mut()[1] = 65537;
+        memory.copy_u16(42, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 65578);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u32_aray() {
         let data = &[1u32, 1];
-        let memory = Memory::new(2);
-        memory.copy_u32_vector(data, 0);
-        assert_eq!(memory.get().borrow()[0], 4294967297);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.copy_u32_vector(data, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 4294967297);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u32() {
-        let memory = Memory::new(2);
-        memory.get().borrow_mut()[0] = 4294967297;
-        memory.copy_u32(42, 0);
-        assert_eq!(memory.get().borrow()[0], 4294967338);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.get().borrow_mut()[1] = 4294967297;
+        memory.copy_u32(42, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 4294967338);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u64_aray() {
         let data = &[1u64];
-        let memory = Memory::new(2);
-        memory.copy_u64_vector(data, 0);
-        assert_eq!(memory.get().borrow()[0], 1);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.copy_u64_vector(data, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 1);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 
     #[test]
     fn it_should_copy_a_u64() {
-        let memory = Memory::new(2);
-        memory.copy_u64(42, 0);
-        assert_eq!(memory.get().borrow()[0], 42);
-        assert_eq!(memory.get().borrow()[1], 0);
+        let memory = Memory::new(3);
+        memory.copy_u64(42, 1);
+        assert_eq!(memory.get().borrow()[0], 0);
+        assert_eq!(memory.get().borrow()[1], 42);
+        assert_eq!(memory.get().borrow()[2], 0);
     }
 }
