@@ -613,4 +613,56 @@ mod tests {
         let global = cpu.globals.get("test").unwrap().clone();
         assert_eq!(global, 42);
     }
+
+    #[test]
+    fn it_should_load_a_u8_into_a_register() {
+        let instructions = vec![Instruction::Ld8 {
+            register: 0,
+            value: Value::Constant(42),
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(260).unwrap();
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers.get(0).unwrap(), 42);
+    }
+
+    #[test]
+    fn it_should_load_a_u16_into_a_register() {
+        let instructions = vec![Instruction::Ld16 {
+            register: 0,
+            value: Value::Constant(42),
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(260).unwrap();
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers.get(0).unwrap(), 42);
+    }
+
+    #[test]
+    fn it_should_load_a_u32_into_a_register() {
+        let instructions = vec![Instruction::Ld32 {
+            register: 0,
+            value: Value::Constant(42),
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(260).unwrap();
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers.get(0).unwrap(), 42);
+    }
+
+    #[test]
+    fn it_should_load_a_u64_into_a_register() {
+        let instructions = vec![Instruction::Ld64 {
+            register: 0,
+            value: Value::Constant(42),
+        }];
+        let program = Program(instructions);
+        let mut cpu = Cpu::new(260).unwrap();
+        cpu.execute(program).unwrap();
+        let registers = cpu.current_register_stack();
+        assert_eq!(registers.get(0).unwrap(), 42);
+    }
 }
