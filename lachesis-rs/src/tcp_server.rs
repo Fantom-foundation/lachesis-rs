@@ -1,7 +1,7 @@
 use crate::event::event_hash::EventHash;
 use crate::hashgraph::{BTreeHashgraph, HashgraphWire};
-use crate::lachesis::Lachesis;
 use crate::lachesis::opera::{Opera, OperaWire};
+use crate::lachesis::Lachesis;
 use crate::node::Node;
 use crate::peer::{Peer, PeerId};
 use crate::swirlds::Swirlds;
@@ -84,11 +84,7 @@ impl Peer<BTreeHashgraph> for TcpPeer {
 }
 
 impl Peer<Opera> for TcpPeer {
-    fn get_sync(
-        &self,
-        _pk: PeerId,
-        _k: Option<&Opera>,
-    ) -> Result<(EventHash, Opera), Error> {
+    fn get_sync(&self, _pk: PeerId, _k: Option<&Opera>) -> Result<(EventHash, Opera), Error> {
         let mut buffer = Vec::new();
         let mut stream = TcpStream::connect(&self.address.clone())?;
         let mut last_received = 0;

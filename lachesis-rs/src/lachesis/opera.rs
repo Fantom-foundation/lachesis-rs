@@ -227,7 +227,6 @@ pub struct OperaWire {
     pub lamport_timestamp: usize,
 }
 
-
 impl OperaWire {
     pub fn into_opera(self) -> Opera {
         Opera {
