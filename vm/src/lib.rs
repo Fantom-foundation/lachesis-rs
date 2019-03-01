@@ -470,6 +470,68 @@ impl Cpu {
                         },
                     )?;
                 }
+                Instruction::St8 {
+                    register,
+                    value: address_value,
+                } => {
+                    let registers = self.current_register_stack();
+                    let value = registers.get(register as usize)? as u8;
+                    let address = match address_value {
+                        Value::Constant(a) => a as usize,
+                        Value::Register(r) => registers.get(r as usize)? as usize,
+                    };
+                    self.memory.copy_u8(value, address);
+                }
+                Instruction::St16 {
+                    register,
+                    value: address_value,
+                } => {
+                    let registers = self.current_register_stack();
+                    let value = registers.get(register as usize)? as u16;
+                    let address = match address_value {
+                        Value::Constant(a) => a as usize,
+                        Value::Register(r) => registers.get(r as usize)? as usize,
+                    };
+                    self.memory.copy_u16(value, address);
+                }
+                Instruction::St32 {
+                    register,
+                    value: address_value,
+                } => {
+                    let registers = self.current_register_stack();
+                    let value = registers.get(register as usize)? as u32;
+                    let address = match address_value {
+                        Value::Constant(a) => a as usize,
+                        Value::Register(r) => registers.get(r as usize)? as usize,
+                    };
+                    self.memory.copy_u32(value, address);
+                }
+                Instruction::St64 {
+                    register,
+                    value: address_value,
+                } => {
+                    let registers = self.current_register_stack();
+                    let value = registers.get(register as usize)? as u64;
+                    let address = match address_value {
+                        Value::Constant(a) => a as usize,
+                        Value::Register(r) => registers.get(r as usize)? as usize,
+                    };
+                    self.memory.copy_u64(value, address);
+                }
+                Instruction::Lea { destiny, source } => {
+                    let registers = self.current_register_stack();
+                    let effective_address = registers.address + source as usize;
+                    registers.set(destiny as usize, effective_address as u64)?;
+                }
+                Instruction::Iadd { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_i64(register as usize);
+                    let new_value = destiny_value.wrapping_add(match value {
+                        Value::Register(s) => registers.get_i64(s as usize),
+                        Value::Constant(v) => v as i64,
+                    });
+                    registers.set_i64(register as usize, new_value);
+                }
                 _ => panic!("Not implemented yet"),
             }
             i += 1;

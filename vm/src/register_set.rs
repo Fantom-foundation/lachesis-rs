@@ -26,6 +26,15 @@ impl RegisterSet {
             Ok(self.memory.get().borrow()[index])
         }
     }
+    pub(crate) fn get_i64(&self, index: usize) -> i64 {
+        let address = self.address + index;
+        unsafe {
+            std::slice::from_raw_parts(
+                self.memory.get().borrow()[address..address + 1].as_ptr() as *const i64,
+                1,
+            )[0]
+        }
+    }
     pub(crate) fn set(&mut self, index: usize, value: u64) -> Result<(), Error> {
         if index >= self.size {
             Err(Error::from(RuntimeError::InvalidRegisterIndex {
@@ -35,6 +44,16 @@ impl RegisterSet {
             self.memory.get().borrow_mut()[index] = value;
             Ok(())
         }
+    }
+    pub(crate) fn set_i64(&self, index: usize, value: i64) {
+        let address = self.address + index;
+        let raw_memory = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.memory.get().borrow()[address..address + 1].as_ptr() as *mut i64,
+                1,
+            )
+        };
+        raw_memory.copy_from_slice(&[value]);
     }
     pub(crate) fn to_string(&self, start_index: usize) -> Result<String, Error> {
         let u8_contents = self.memory.get().borrow()[start_index..self.address + self.size]
