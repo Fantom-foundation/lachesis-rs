@@ -93,7 +93,7 @@ use std::iter::Iterator;
 
 mod allocator;
 mod error;
-mod instruction;
+pub mod instruction;
 mod memory;
 mod register_set;
 

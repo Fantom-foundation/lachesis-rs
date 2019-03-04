@@ -2,6 +2,7 @@
 
 members = [
     "dummy",
+    "dvm",
     "kvdb",
     "lachesis-rs",
     "fal",
