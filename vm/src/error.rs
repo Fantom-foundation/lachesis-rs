@@ -32,3 +32,9 @@ pub enum RuntimeError {
     #[fail(display = "Invalid register index {}", register)]
     InvalidRegisterIndex { register: usize },
 }
+
+#[derive(Debug, Fail)]
+pub enum MemoryError {
+    #[fail(display = "Wrong memory address {}", address)]
+    WrongMemoryAddress { address: usize },
+}

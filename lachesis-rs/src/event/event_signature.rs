@@ -40,13 +40,12 @@ where
     array.serialize(serializer)
 }
 
-fn deserialize_array<'de, D, T>(deserializer: D) -> Result<[T; 64], D::Error>
+fn deserialize_array<'de, D>(deserializer: D) -> Result<[u8; 64], D::Error>
 where
     D: Deserializer<'de>,
-    T: Deserialize<'de> + 'de + Copy,
 {
-    let mut result: [T; 64] = unsafe { ::std::mem::uninitialized() };
-    let slice: Vec<T> = Deserialize::deserialize(deserializer)?;
+    let mut result: [u8; 64] = [0; 64];
+    let slice: Vec<u8> = Deserialize::deserialize(deserializer)?;
     if slice.len() != 64 {
         return Err(::serde::de::Error::custom("input slice has wrong length"));
     }

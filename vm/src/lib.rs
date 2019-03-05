@@ -525,9 +525,9 @@ impl Cpu {
                 }
                 Instruction::Iadd { register, value } => {
                     let registers = self.current_register_stack();
-                    let destiny_value = registers.get_i64(register as usize);
+                    let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value.wrapping_add(match value {
-                        Value::Register(s) => registers.get_i64(s as usize),
+                        Value::Register(s) => registers.get_i64(s as usize)?,
                         Value::Constant(v) => v as i64,
                     });
                     registers.set_i64(register as usize, new_value);
