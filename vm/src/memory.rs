@@ -19,25 +19,28 @@ impl Memory {
     }
 
     pub(crate) fn get(&self, address: usize) -> Result<u64, Error> {
-        let value = self.0.borrow().get(address).map(|v| v.clone()).ok_or(Error::from(
-            MemoryError::WrongMemoryAddress { address },
-        ))?;
+        let value = self
+            .0
+            .borrow()
+            .get(address)
+            .map(|v| v.clone())
+            .ok_or(Error::from(MemoryError::WrongMemoryAddress { address }))?;
         Ok(value)
     }
 
     pub(crate) fn get_i64(&self, address: usize) -> Result<i64, Error> {
-        let value = self.0.borrow().get(address).map(|v| v.clone()).ok_or(Error::from(
-            MemoryError::WrongMemoryAddress { address },
-        ))?;
+        let value = self
+            .0
+            .borrow()
+            .get(address)
+            .map(|v| v.clone())
+            .ok_or(Error::from(MemoryError::WrongMemoryAddress { address }))?;
         Ok(value as i64)
     }
 
     pub(crate) fn get_u8_vector(&self, address: usize, size: usize) -> Result<Vec<u8>, Error> {
         let memory: &[u8] = unsafe {
-            std::slice::from_raw_parts(
-                self.0.borrow()[address..].as_ptr() as *const u8,
-                size
-            )
+            std::slice::from_raw_parts(self.0.borrow()[address..].as_ptr() as *const u8, size)
         };
         Ok(Vec::from(memory))
     }

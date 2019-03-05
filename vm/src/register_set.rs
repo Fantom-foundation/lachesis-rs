@@ -15,11 +15,11 @@ impl RegisterSet {
                 register: index,
             }))
         } else {
-            self.memory.get(self.address+index)
+            self.memory.get(self.address + index)
         }
     }
     pub(crate) fn get_i64(&self, index: usize) -> Result<i64, Error> {
-        self.memory.get_i64(self.address+index)
+        self.memory.get_i64(self.address + index)
     }
     pub(crate) fn set(&mut self, index: usize, value: u64) -> Result<(), Error> {
         if index >= self.size {
@@ -27,7 +27,7 @@ impl RegisterSet {
                 register: index,
             }))
         } else {
-            self.memory.copy_u64(value, self.address+index);
+            self.memory.copy_u64(value, self.address + index);
             Ok(())
         }
     }
@@ -36,7 +36,9 @@ impl RegisterSet {
         self.memory.copy_i64(value, address)
     }
     pub(crate) fn to_string(&self, start_index: usize) -> Result<String, Error> {
-        let u8_contents = self.memory.get_u8_vector(start_index, self.size - start_index)?;
+        let u8_contents = self
+            .memory
+            .get_u8_vector(start_index, self.size - start_index)?;
         String::from_utf8(u8_contents).map_err(|e| Error::from(e))
     }
 }
