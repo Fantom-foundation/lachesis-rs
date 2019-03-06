@@ -28,6 +28,13 @@ impl Memory {
         Ok(value)
     }
 
+    pub(crate) fn get_u32(&self, address: usize) -> Result<u32, Error> {
+        let memory: &[u32] = unsafe {
+            std::slice::from_raw_parts(self.0.borrow()[address..].as_ptr() as *const u32, 1)
+        };
+        Ok(memory[0])
+    }
+
     pub(crate) fn get_i64(&self, address: usize) -> Result<i64, Error> {
         let value = self
             .0
@@ -36,6 +43,13 @@ impl Memory {
             .map(|v| v.clone())
             .ok_or(Error::from(MemoryError::WrongMemoryAddress { address }))?;
         Ok(value as i64)
+    }
+
+    pub(crate) fn get_f64(&self, address: usize) -> Result<f64, Error> {
+        let memory: &[f64] = unsafe {
+            std::slice::from_raw_parts(self.0.borrow()[address..].as_ptr() as *const f64, 1)
+        };
+        Ok(memory[0])
     }
 
     pub(crate) fn get_u8_vector(&self, address: usize, size: usize) -> Result<Vec<u8>, Error> {
@@ -93,6 +107,16 @@ impl Memory {
 
     pub(crate) fn copy_u64(&self, value: u64, address: usize) {
         self.0.borrow_mut()[address] = value;
+    }
+
+    pub(crate) fn copy_f64(&self, value: f64, address: usize) {
+        let raw_memory = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.0.borrow()[address..address + 1].as_ptr() as *mut f64,
+                1,
+            )
+        };
+        raw_memory.copy_from_slice(&[value]);
     }
 
     pub(crate) fn copy_i64(&self, value: i64, address: usize) {

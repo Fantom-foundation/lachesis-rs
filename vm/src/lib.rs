@@ -90,6 +90,7 @@ use failure::Error;
 use libc::scanf;
 use std::collections::HashMap;
 use std::iter::Iterator;
+use std::ops::Rem;
 
 mod allocator;
 mod error;
@@ -531,6 +532,172 @@ impl Cpu {
                         Value::Constant(v) => v as i64,
                     });
                     registers.set_i64(register as usize, new_value);
+                }
+                Instruction::Isub { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_i64(register as usize)?;
+                    let new_value = destiny_value.wrapping_sub(match value {
+                        Value::Register(s) => registers.get_i64(s as usize)?,
+                        Value::Constant(v) => v as i64,
+                    });
+                    registers.set_i64(register as usize, new_value);
+                }
+                Instruction::Smul { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_i64(register as usize)?;
+                    let new_value = destiny_value.wrapping_mul(match value {
+                        Value::Register(s) => registers.get_i64(s as usize)?,
+                        Value::Constant(v) => v as i64,
+                    });
+                    registers.set_i64(register as usize, new_value);
+                }
+                Instruction::Umul { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value.wrapping_mul(match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    });
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Srem { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_i64(register as usize)?;
+                    let new_value = destiny_value.wrapping_rem(match value {
+                        Value::Register(s) => registers.get_i64(s as usize)?,
+                        Value::Constant(v) => v as i64,
+                    });
+                    registers.set_i64(register as usize, new_value);
+                }
+                Instruction::Urem { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value.wrapping_rem(match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    });
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Sdiv { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_i64(register as usize)?;
+                    let new_value = destiny_value.wrapping_div(match value {
+                        Value::Register(s) => registers.get_i64(s as usize)?,
+                        Value::Constant(v) => v as i64,
+                    });
+                    registers.set_i64(register as usize, new_value);
+                }
+                Instruction::Udiv { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value.wrapping_div(match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    });
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::And { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value & (match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    });
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Or { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value | (match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    });
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Xor { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value ^ (match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    });
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Shl { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value.wrapping_shl(match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    } as u32);
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Ashr { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get(register as usize)?;
+                    let new_value = destiny_value.wrapping_shr(match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    } as u32);
+                    registers.set(register as usize, new_value)?;
+                }
+                Instruction::Lshr { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_u32(register as usize)?;
+                    let new_value = destiny_value.wrapping_shr(match value {
+                        Value::Register(s) => registers.get(s as usize)?,
+                        Value::Constant(v) => v,
+                    } as u32);
+                    registers.set_u32(register as usize, new_value);
+                }
+                Instruction::Ineg { register } => {
+                    let registers = self.current_register_stack();
+                    registers.set(register as usize, !registers.get(register as usize)?)?;
+                }
+                Instruction::Fadd { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_f64(register as usize)?;
+                    let new_value = destiny_value + (match value {
+                        Value::Register(s) => registers.get_f64(s as usize)?,
+                        Value::Constant(v) => v as f64,
+                    });
+                    registers.set_f64(register as usize, new_value);
+                }
+                Instruction::Fsub { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_f64(register as usize)?;
+                    let new_value = destiny_value - (match value {
+                        Value::Register(s) => registers.get_f64(s as usize)?,
+                        Value::Constant(v) => v as f64,
+                    });
+                    registers.set_f64(register as usize, new_value);
+                }
+                Instruction::Fmul { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_f64(register as usize)?;
+                    let new_value = destiny_value * (match value {
+                        Value::Register(s) => registers.get_f64(s as usize)?,
+                        Value::Constant(v) => v as f64,
+                    });
+                    registers.set_f64(register as usize, new_value);
+                }
+                Instruction::Frem { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_f64(register as usize)?;
+                    let new_value = destiny_value.rem(match value {
+                        Value::Register(s) => registers.get_f64(s as usize)?,
+                        Value::Constant(v) => v as f64,
+                    });
+                    registers.set_f64(register as usize, new_value);
+                }
+                Instruction::Fdiv { register, value } => {
+                    let registers = self.current_register_stack();
+                    let destiny_value = registers.get_f64(register as usize)?;
+                    let new_value = destiny_value / (match value {
+                        Value::Register(s) => registers.get_f64(s as usize)?,
+                        Value::Constant(v) => v as f64,
+                    });
+                    registers.set_f64(register as usize, new_value);
                 }
                 _ => panic!("Not implemented yet"),
             }
