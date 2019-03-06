@@ -599,28 +599,31 @@ impl Cpu {
                 Instruction::And { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get(register as usize)?;
-                    let new_value = destiny_value & (match value {
-                        Value::Register(s) => registers.get(s as usize)?,
-                        Value::Constant(v) => v,
-                    });
+                    let new_value = destiny_value
+                        & (match value {
+                            Value::Register(s) => registers.get(s as usize)?,
+                            Value::Constant(v) => v,
+                        });
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Or { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get(register as usize)?;
-                    let new_value = destiny_value | (match value {
-                        Value::Register(s) => registers.get(s as usize)?,
-                        Value::Constant(v) => v,
-                    });
+                    let new_value = destiny_value
+                        | (match value {
+                            Value::Register(s) => registers.get(s as usize)?,
+                            Value::Constant(v) => v,
+                        });
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Xor { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get(register as usize)?;
-                    let new_value = destiny_value ^ (match value {
-                        Value::Register(s) => registers.get(s as usize)?,
-                        Value::Constant(v) => v,
-                    });
+                    let new_value = destiny_value
+                        ^ (match value {
+                            Value::Register(s) => registers.get(s as usize)?,
+                            Value::Constant(v) => v,
+                        });
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Shl { register, value } => {
@@ -657,28 +660,31 @@ impl Cpu {
                 Instruction::Fadd { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get_f64(register as usize)?;
-                    let new_value = destiny_value + (match value {
-                        Value::Register(s) => registers.get_f64(s as usize)?,
-                        Value::Constant(v) => v as f64,
-                    });
+                    let new_value = destiny_value
+                        + (match value {
+                            Value::Register(s) => registers.get_f64(s as usize)?,
+                            Value::Constant(v) => v as f64,
+                        });
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Fsub { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get_f64(register as usize)?;
-                    let new_value = destiny_value - (match value {
-                        Value::Register(s) => registers.get_f64(s as usize)?,
-                        Value::Constant(v) => v as f64,
-                    });
+                    let new_value = destiny_value
+                        - (match value {
+                            Value::Register(s) => registers.get_f64(s as usize)?,
+                            Value::Constant(v) => v as f64,
+                        });
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Fmul { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get_f64(register as usize)?;
-                    let new_value = destiny_value * (match value {
-                        Value::Register(s) => registers.get_f64(s as usize)?,
-                        Value::Constant(v) => v as f64,
-                    });
+                    let new_value = destiny_value
+                        * (match value {
+                            Value::Register(s) => registers.get_f64(s as usize)?,
+                            Value::Constant(v) => v as f64,
+                        });
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Frem { register, value } => {
@@ -693,10 +699,11 @@ impl Cpu {
                 Instruction::Fdiv { register, value } => {
                     let registers = self.current_register_stack();
                     let destiny_value = registers.get_f64(register as usize)?;
-                    let new_value = destiny_value / (match value {
-                        Value::Register(s) => registers.get_f64(s as usize)?,
-                        Value::Constant(v) => v as f64,
-                    });
+                    let new_value = destiny_value
+                        / (match value {
+                            Value::Register(s) => registers.get_f64(s as usize)?,
+                            Value::Constant(v) => v as f64,
+                        });
                     registers.set_f64(register as usize, new_value);
                 }
                 _ => panic!("Not implemented yet"),

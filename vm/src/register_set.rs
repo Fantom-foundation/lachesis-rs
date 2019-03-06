@@ -25,7 +25,7 @@ impl RegisterSet {
         self.memory.get_i64(self.address + index)
     }
     pub(crate) fn get_u32(&self, index: usize) -> Result<u32, Error> {
-        self.memory.get_u32(self.address+index)
+        self.memory.get_u32(self.address + index)
     }
     pub(crate) fn set(&mut self, index: usize, value: u64) -> Result<(), Error> {
         if index >= self.size {
