@@ -37,4 +37,6 @@ pub enum RuntimeError {
 pub enum MemoryError {
     #[fail(display = "Wrong memory address {}", address)]
     WrongMemoryAddress { address: usize },
+    #[fail(display = "Error converting memory to function")]
+    ErrorFetchingFunctionFromMemory,
 }

@@ -99,6 +99,7 @@ mod memory;
 mod register_set;
 
 pub type CpuFn = Box<Fn(&mut StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
+#[repr(C)]
 pub enum Function {
     Native(CpuFn),
     UserDefined(usize, u64, u64),
@@ -364,6 +365,7 @@ impl Cpu {
             "puts".to_owned(),
             Function::Native(Box::new(|cpu, args| cpu.puts(args))),
         );
+
         functions.insert(
             "printf".to_owned(),
             Function::Native(Box::new(|cpu, args| cpu.printf(args))),
@@ -387,9 +389,25 @@ impl Cpu {
             globals: HashMap::new(),
             register_stack: vec![],
         };
+        cpu.add_function("puts")?;
+        cpu.add_function("printf")?;
+        cpu.add_function("malloc")?;
+        cpu.add_function("exit")?;
+        cpu.add_function("free")?;
         let register_set = cpu.create_new_register_set()?;
         cpu.register_stack.push(register_set);
         Ok(cpu)
+    }
+
+    fn add_function(&mut self, name: &'static str) -> Result<(), Error> {
+        match self.functions.get(name) {
+            Some(f) => {
+                let address = self.allocator.malloc_t::<Function>()?;
+                self.memory.copy_t(f, address);
+                Ok(())
+            }
+            None => Err(Error::from(RuntimeError::GlobalNotFound { name: name.clone().to_owned() }))
+        }
     }
 
     pub fn execute(&mut self, program: Program) -> Result<(), Error> {

@@ -1,6 +1,7 @@
 use crate::error::MemoryError;
 use failure::Error;
 use std::cell::RefCell;
+use std::mem::size_of;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -57,6 +58,13 @@ impl Memory {
             std::slice::from_raw_parts(self.0.borrow()[address..].as_ptr() as *const u8, size)
         };
         Ok(Vec::from(memory))
+    }
+
+    pub(crate) fn get_t<T>(&self, address: usize) -> Result<&T, Error> {
+        let raw_data = self.get_u8_vector(address, size_of::<T>())?;
+        unsafe { (raw_data.as_ptr() as *const T).as_ref() }.ok_or(Error::from(
+            MemoryError::ErrorFetchingFunctionFromMemory
+        ))
     }
 
     pub(crate) fn copy_u8_vector(&self, vector: &[u8], address: usize) {
@@ -127,6 +135,12 @@ impl Memory {
             )
         };
         raw_memory.copy_from_slice(&[value]);
+    }
+
+    pub(crate) fn copy_t<T>(&self, value: &T, address: usize) {
+        let v: *const T = value;
+        let p: &[u8] = unsafe { std::slice::from_raw_parts(v as *const u8, size_of::<T>()) };
+        self.copy_u8_vector(p, address)
     }
 }
 

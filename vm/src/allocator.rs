@@ -1,5 +1,6 @@
 use failure::Error;
 use std::collections::HashMap;
+use std::mem::size_of;
 
 #[derive(Debug, Fail)]
 pub(crate) enum AllocatorError {
@@ -77,6 +78,10 @@ impl Allocator {
             allocated_spaces: HashMap::new(),
             free_chunks: FreeChunks::new(capacity),
         }
+    }
+
+    pub(crate) fn malloc_t<T>(&mut self) -> Result<usize, Error> {
+        self.malloc(size_of::<T>())
     }
 
     pub(crate) fn malloc(&mut self, size: usize) -> Result<usize, Error> {
