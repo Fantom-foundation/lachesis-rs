@@ -1069,7 +1069,7 @@ mod tests {
             Instruction::Leave,
         ];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
         let test = cpu.functions.get("test").unwrap();
         match test {
@@ -1089,7 +1089,7 @@ mod tests {
             value: Value::Constant(42),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
         let mut rc = cpu.register_stack.borrow_mut();
         let registers = rc.last_mut().unwrap();
@@ -1103,7 +1103,7 @@ mod tests {
             value: Value::Register(1),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         {
             let mut rc = cpu.register_stack.borrow_mut();
             let registers = rc.last_mut().unwrap();
@@ -1122,7 +1122,7 @@ mod tests {
             register: 0,
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.globals.insert("test".to_owned(), 42);
         cpu.execute(program).unwrap();
         let mut rc = cpu.register_stack.borrow_mut();
@@ -1140,7 +1140,7 @@ mod tests {
             register: 0,
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
     }
 
@@ -1151,7 +1151,7 @@ mod tests {
             register: 0,
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         {
             let mut rc = cpu.register_stack.borrow_mut();
             let registers = rc.last_mut().unwrap();
@@ -1169,7 +1169,7 @@ mod tests {
             value: Value::Constant(42),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
         let mut rc = cpu.register_stack.borrow_mut();
         let registers = rc.last_mut().unwrap();
@@ -1183,7 +1183,7 @@ mod tests {
             value: Value::Constant(42),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
         let mut rc = cpu.register_stack.borrow_mut();
         let registers = rc.last_mut().unwrap();
@@ -1197,7 +1197,7 @@ mod tests {
             value: Value::Constant(42),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
         let mut rc = cpu.register_stack.borrow_mut();
         let registers = rc.last_mut().unwrap();
@@ -1211,7 +1211,7 @@ mod tests {
             value: Value::Constant(42),
         }];
         let program = Program(instructions);
-        let mut cpu = Cpu::new(260).unwrap();
+        let mut cpu = Cpu::new(1024).unwrap();
         cpu.execute(program).unwrap();
         let mut rc = cpu.register_stack.borrow_mut();
         let registers = rc.last_mut().unwrap();
