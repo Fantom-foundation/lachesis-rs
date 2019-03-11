@@ -27,6 +27,9 @@ impl RegisterSet {
     pub(crate) fn get_u32(&self, index: usize) -> Result<u32, Error> {
         self.memory.get_u32(self.address + index)
     }
+    pub(crate) fn get_t<T>(&self, index: usize) -> Result<&T, Error> {
+        self.memory.get_t(self.address + index)
+    }
     pub(crate) fn set(&mut self, index: usize, value: u64) -> Result<(), Error> {
         if index >= self.size {
             Err(Error::from(RuntimeError::InvalidRegisterIndex {

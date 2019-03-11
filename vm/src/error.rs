@@ -31,6 +31,8 @@ pub enum RuntimeError {
     GlobalNotFound { name: String },
     #[fail(display = "Invalid register index {}", register)]
     InvalidRegisterIndex { register: usize },
+    #[fail(display = "Trying to return from a never called function")]
+    ReturnOnNoFunction,
 }
 
 #[derive(Debug, Fail)]

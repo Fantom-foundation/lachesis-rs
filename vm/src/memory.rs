@@ -62,9 +62,8 @@ impl Memory {
 
     pub(crate) fn get_t<T>(&self, address: usize) -> Result<&T, Error> {
         let raw_data = self.get_u8_vector(address, size_of::<T>())?;
-        unsafe { (raw_data.as_ptr() as *const T).as_ref() }.ok_or(Error::from(
-            MemoryError::ErrorFetchingFunctionFromMemory
-        ))
+        unsafe { (raw_data.as_ptr() as *const T).as_ref() }
+            .ok_or(Error::from(MemoryError::ErrorFetchingFunctionFromMemory))
     }
 
     pub(crate) fn copy_u8_vector(&self, vector: &[u8], address: usize) {

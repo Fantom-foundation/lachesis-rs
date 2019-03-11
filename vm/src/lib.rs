@@ -1,5 +1,3 @@
-#![feature(try_from)]
-
 /**
 Each stack frame has its own set of 256 registers.
 
@@ -88,9 +86,11 @@ use crate::memory::Memory;
 use crate::register_set::RegisterSet;
 use failure::Error;
 use libc::scanf;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter::Iterator;
 use std::ops::Rem;
+use std::rc::Rc;
 
 mod allocator;
 mod error;
@@ -98,25 +98,30 @@ pub mod instruction;
 mod memory;
 mod register_set;
 
-pub type CpuFn = Box<Fn(&mut StackBasedCpu, Vec<u8>) -> Result<u64, Error>>;
+type CpuFn = Box<Fn(&NativeFunctions, Vec<u8>) -> Result<u64, Error>>;
 #[repr(C)]
-pub enum Function {
+enum Function {
     Native(CpuFn),
     UserDefined(usize, u64, u64),
 }
 
-pub trait StackBasedCpu {
-    fn current_register_stack(&mut self) -> &mut RegisterSet;
+struct NativeFunctions {
+    allocator: Rc<RefCell<Allocator>>,
+    register_stack: Rc<RefCell<Vec<RegisterSet>>>,
+}
 
-    fn get_allocator(&mut self) -> &mut Allocator;
-
-    fn puts(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+impl NativeFunctions {
+    fn puts(&self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() == 1 {
-            let registers: &RegisterSet = self.current_register_stack();
-            registers.to_string(args[0] as usize).map(|s| {
-                println!("{}", s);
-                0
-            })
+            self.register_stack
+                .borrow()
+                .last()
+                .unwrap()
+                .to_string(args[0] as usize)
+                .map(|s| {
+                    println!("{}", s);
+                    0
+                })
         } else {
             Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "puts".to_owned(),
@@ -126,8 +131,9 @@ pub trait StackBasedCpu {
         }
     }
 
-    fn printf(&mut self, args: Vec<u8>) -> Result<u64, Error> {
-        let registers: &RegisterSet = self.current_register_stack();
+    fn printf(&self, args: Vec<u8>) -> Result<u64, Error> {
+        let rs = self.register_stack.borrow();
+        let registers: &RegisterSet = rs.last().unwrap();
         match args.len() {
             1 => {
                 let content = registers.to_string(args[0] as usize)?;
@@ -222,7 +228,7 @@ pub trait StackBasedCpu {
         }
     }
 
-    fn scanf(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+    fn scanf(&self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() == 0 {
             return Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "scanf".to_owned(),
@@ -230,7 +236,8 @@ pub trait StackBasedCpu {
                 got: 0,
             }));
         }
-        let registers: &RegisterSet = self.current_register_stack();
+        let rc = self.register_stack.borrow();
+        let registers = rc.last().unwrap();
         let content: Vec<i8> = registers
             .to_string(args[0] as usize)?
             .into_bytes()
@@ -307,7 +314,7 @@ pub trait StackBasedCpu {
         Ok(r as u64)
     }
 
-    fn exit(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+    fn exit(&self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() != 1 {
             Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "exit".to_owned(),
@@ -316,12 +323,12 @@ pub trait StackBasedCpu {
             }))
         } else {
             Err(Error::from(RuntimeError::ProgramEnded {
-                errno: self.current_register_stack().get(0)?,
+                errno: self.register_stack.borrow().last().unwrap().get(0)?,
             }))
         }
     }
 
-    fn malloc(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+    fn malloc(&self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() != 1 {
             Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "malloc".to_owned(),
@@ -329,12 +336,12 @@ pub trait StackBasedCpu {
                 got: args.len(),
             }))
         } else {
-            let size = self.current_register_stack().get(0)? as usize;
-            self.get_allocator().malloc(size).map(|v| v as u64)
+            let size = self.register_stack.borrow().last().unwrap().get(0)? as usize;
+            self.allocator.borrow_mut().malloc(size).map(|v| v as u64)
         }
     }
 
-    fn free(&mut self, args: Vec<u8>) -> Result<u64, Error> {
+    fn free(&self, args: Vec<u8>) -> Result<u64, Error> {
         if args.len() != 1 {
             Err(Error::from(RuntimeError::WrongArgumentsNumber {
                 name: "free".to_owned(),
@@ -342,24 +349,26 @@ pub trait StackBasedCpu {
                 got: args.len(),
             }))
         } else {
-            let address = self.current_register_stack().get(0)? as usize;
-            self.get_allocator().free(address).map(|_| 0)
+            let address = self.register_stack.borrow().last().unwrap().get(0)? as usize;
+            self.allocator.borrow_mut().free(address).map(|_| 0)
         }
     }
 }
 
 pub struct Cpu {
-    allocator: Allocator,
+    allocator: Rc<RefCell<Allocator>>,
+    call_stack: Vec<(usize, u8)>,
     pub(crate) functions: HashMap<String, Function>,
     globals: HashMap<String, u64>,
     memory: Memory,
-    register_stack: Vec<RegisterSet>,
+    register_stack: Rc<RefCell<Vec<RegisterSet>>>,
 }
 
 impl Cpu {
     pub fn new(capacity: usize) -> Result<Cpu, Error> {
         let memory = Memory::new(capacity);
-        let allocator = Allocator::new(capacity);
+        let allocator = Rc::new(RefCell::new(Allocator::new(capacity)));
+        let register_stack = Rc::new(RefCell::new(vec![]));
         let mut functions = HashMap::new();
         functions.insert(
             "puts".to_owned(),
@@ -386,8 +395,9 @@ impl Cpu {
             allocator,
             functions,
             memory,
+            register_stack,
+            call_stack: Vec::new(),
             globals: HashMap::new(),
-            register_stack: vec![],
         };
         cpu.add_function("puts")?;
         cpu.add_function("printf")?;
@@ -395,18 +405,20 @@ impl Cpu {
         cpu.add_function("exit")?;
         cpu.add_function("free")?;
         let register_set = cpu.create_new_register_set()?;
-        cpu.register_stack.push(register_set);
+        cpu.register_stack.borrow_mut().push(register_set);
         Ok(cpu)
     }
 
     fn add_function(&mut self, name: &'static str) -> Result<(), Error> {
         match self.functions.get(name) {
             Some(f) => {
-                let address = self.allocator.malloc_t::<Function>()?;
+                let address = self.allocator.borrow_mut().malloc_t::<Function>()?;
                 self.memory.copy_t(f, address);
                 Ok(())
             }
-            None => Err(Error::from(RuntimeError::GlobalNotFound { name: name.clone().to_owned() }))
+            None => Err(Error::from(RuntimeError::GlobalNotFound {
+                name: name.clone().to_owned(),
+            })),
         }
     }
 
@@ -429,22 +441,27 @@ impl Cpu {
                             name: string.clone(),
                         }))?
                         .clone();
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(register as usize, value)?;
                 }
                 Instruction::Sg { string, register } => {
-                    let value = self.current_register_stack().get(register as usize)?;
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
+                    let value = registers.get(register as usize)?;
                     self.globals.insert(string, value);
                 }
                 Instruction::Css { string, register } => {
                     let string_size = (string.len() as f64 / 8f64).ceil() as usize;
-                    let address = self.allocator.malloc(string_size)?;
+                    let address = self.allocator.borrow_mut().malloc(string_size)?;
                     self.memory.copy_u8_vector(string.as_bytes(), address);
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(register as usize, address as u64)?;
                 }
                 Instruction::Ld8 { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(
                         register as usize,
                         match value {
@@ -456,7 +473,8 @@ impl Cpu {
                     )?;
                 }
                 Instruction::Ld16 { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(
                         register as usize,
                         match value {
@@ -468,7 +486,8 @@ impl Cpu {
                     )?;
                 }
                 Instruction::Ld32 { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(
                         register as usize,
                         match value {
@@ -480,7 +499,8 @@ impl Cpu {
                     )?;
                 }
                 Instruction::Ld64 { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(
                         register as usize,
                         match value {
@@ -493,7 +513,8 @@ impl Cpu {
                     register,
                     value: address_value,
                 } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let value = registers.get(register as usize)? as u8;
                     let address = match address_value {
                         Value::Constant(a) => a as usize,
@@ -505,7 +526,8 @@ impl Cpu {
                     register,
                     value: address_value,
                 } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let value = registers.get(register as usize)? as u16;
                     let address = match address_value {
                         Value::Constant(a) => a as usize,
@@ -517,7 +539,8 @@ impl Cpu {
                     register,
                     value: address_value,
                 } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let value = registers.get(register as usize)? as u32;
                     let address = match address_value {
                         Value::Constant(a) => a as usize,
@@ -529,7 +552,8 @@ impl Cpu {
                     register,
                     value: address_value,
                 } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let value = registers.get(register as usize)? as u64;
                     let address = match address_value {
                         Value::Constant(a) => a as usize,
@@ -538,12 +562,14 @@ impl Cpu {
                     self.memory.copy_u64(value, address);
                 }
                 Instruction::Lea { destiny, source } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let effective_address = registers.address + source as usize;
                     registers.set(destiny as usize, effective_address as u64)?;
                 }
                 Instruction::Iadd { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value.wrapping_add(match value {
                         Value::Register(s) => registers.get_i64(s as usize)?,
@@ -552,7 +578,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value);
                 }
                 Instruction::Isub { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value.wrapping_sub(match value {
                         Value::Register(s) => registers.get_i64(s as usize)?,
@@ -561,7 +588,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value);
                 }
                 Instruction::Smul { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value.wrapping_mul(match value {
                         Value::Register(s) => registers.get_i64(s as usize)?,
@@ -570,7 +598,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value);
                 }
                 Instruction::Umul { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value.wrapping_mul(match value {
                         Value::Register(s) => registers.get(s as usize)?,
@@ -579,7 +608,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Srem { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value.wrapping_rem(match value {
                         Value::Register(s) => registers.get_i64(s as usize)?,
@@ -588,7 +618,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value);
                 }
                 Instruction::Urem { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value.wrapping_rem(match value {
                         Value::Register(s) => registers.get(s as usize)?,
@@ -597,7 +628,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Sdiv { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value.wrapping_div(match value {
                         Value::Register(s) => registers.get_i64(s as usize)?,
@@ -606,7 +638,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value);
                 }
                 Instruction::Udiv { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value.wrapping_div(match value {
                         Value::Register(s) => registers.get(s as usize)?,
@@ -615,7 +648,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::And { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         & (match value {
@@ -625,7 +659,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Or { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         | (match value {
@@ -635,7 +670,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Xor { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         ^ (match value {
@@ -645,7 +681,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Shl { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value.wrapping_shl(match value {
                         Value::Register(s) => registers.get(s as usize)?,
@@ -654,7 +691,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Ashr { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value.wrapping_shr(match value {
                         Value::Register(s) => registers.get(s as usize)?,
@@ -663,7 +701,8 @@ impl Cpu {
                     registers.set(register as usize, new_value)?;
                 }
                 Instruction::Lshr { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_u32(register as usize)?;
                     let new_value = destiny_value.wrapping_shr(match value {
                         Value::Register(s) => registers.get(s as usize)?,
@@ -672,11 +711,13 @@ impl Cpu {
                     registers.set_u32(register as usize, new_value);
                 }
                 Instruction::Ineg { register } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     registers.set(register as usize, !registers.get(register as usize)?)?;
                 }
                 Instruction::Fadd { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         + (match value {
@@ -686,7 +727,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Fsub { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         - (match value {
@@ -696,7 +738,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Fmul { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         * (match value {
@@ -706,7 +749,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Frem { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value.rem(match value {
                         Value::Register(s) => registers.get_f64(s as usize)?,
@@ -715,7 +759,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Fdiv { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         / (match value {
@@ -725,7 +770,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value);
                 }
                 Instruction::Eq { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         == (match value {
@@ -735,7 +781,8 @@ impl Cpu {
                     registers.set(register as usize, new_value as u64)?;
                 }
                 Instruction::Ne { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         != (match value {
@@ -745,7 +792,8 @@ impl Cpu {
                     registers.set(register as usize, new_value as u64)?;
                 }
                 Instruction::Ult { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         < (match value {
@@ -755,7 +803,8 @@ impl Cpu {
                     registers.set(register as usize, new_value as u64)?;
                 }
                 Instruction::Ule { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         <= (match value {
@@ -765,7 +814,8 @@ impl Cpu {
                     registers.set(register as usize, new_value as u64)?;
                 }
                 Instruction::Ugt { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         > (match value {
@@ -775,7 +825,8 @@ impl Cpu {
                     registers.set(register as usize, new_value as u64)?;
                 }
                 Instruction::Uge { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get(register as usize)?;
                     let new_value = destiny_value
                         >= (match value {
@@ -785,7 +836,8 @@ impl Cpu {
                     registers.set(register as usize, new_value as u64)?;
                 }
                 Instruction::Slt { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value
                         < (match value {
@@ -795,7 +847,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value as i64);
                 }
                 Instruction::Sle { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value
                         <= (match value {
@@ -805,7 +858,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value as i64);
                 }
                 Instruction::Sgt { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value
                         > (match value {
@@ -815,7 +869,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value as i64);
                 }
                 Instruction::Sge { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_i64(register as usize)?;
                     let new_value = destiny_value
                         >= (match value {
@@ -825,7 +880,8 @@ impl Cpu {
                     registers.set_i64(register as usize, new_value as i64);
                 }
                 Instruction::Feq { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         == (match value {
@@ -835,7 +891,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value as i64 as f64);
                 }
                 Instruction::Fne { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         != (match value {
@@ -845,7 +902,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value as i64 as f64);
                 }
                 Instruction::Flt { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         < (match value {
@@ -855,7 +913,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value as i64 as f64);
                 }
                 Instruction::Fle { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         <= (match value {
@@ -865,7 +924,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value as i64 as f64);
                 }
                 Instruction::Fgt { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         > (match value {
@@ -875,7 +935,8 @@ impl Cpu {
                     registers.set_f64(register as usize, new_value as i64 as f64);
                 }
                 Instruction::Fge { register, value } => {
-                    let registers = self.current_register_stack();
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
                     let destiny_value = registers.get_f64(register as usize)?;
                     let new_value = destiny_value
                         >= (match value {
@@ -888,16 +949,78 @@ impl Cpu {
                     i = ((i as i64) + offset - 1) as usize;
                 }
                 Instruction::Jnz { offset, register } => {
-                    let registers = self.current_register_stack();
+                    let rc = self.register_stack.borrow();
+                    let registers = rc.last().unwrap();
                     if registers.get(register as usize)? != 0 {
                         i = ((i as i64) + offset - 1) as usize;
                     }
                 }
                 Instruction::Jz { offset, register } => {
-                    let registers = self.current_register_stack();
+                    let rc = self.register_stack.borrow();
+                    let registers = rc.last().unwrap();
                     if registers.get(register as usize)? == 0 {
                         i = ((i as i64) + offset - 1) as usize;
                     }
+                }
+                Instruction::Call {
+                    return_register,
+                    arguments,
+                } => {
+                    let native_functions = NativeFunctions {
+                        allocator: self.allocator.clone(),
+                        register_stack: self.register_stack.clone(),
+                    };
+                    let rc = self.register_stack.borrow();
+                    let function = {
+                        let registers = rc.last().unwrap();
+                        registers.get_t(return_register as usize)?
+                    };
+                    match function {
+                        Function::Native(f) => {
+                            let r = f(
+                                &native_functions,
+                                arguments
+                                    .to_vec()
+                                    .iter()
+                                    .filter(|v| v.is_some())
+                                    .map(|v| v.unwrap())
+                                    .collect(),
+                            )?;
+                            let mut rc = self.register_stack.borrow_mut();
+                            let registers = rc.last_mut().unwrap();
+                            registers.set(return_register as usize, r)?;
+                        }
+                        Function::UserDefined(new_i, _nargs, _skip) => {
+                            let new_i = new_i.clone();
+                            self.call_stack.push((i, return_register));
+                            i = new_i;
+                            let new_register_set = self.create_new_register_set()?;
+                            self.register_stack.borrow_mut().push(new_register_set);
+                        }
+                    };
+                }
+                Instruction::Ret { value } => {
+                    let (new_i, r) = self
+                        .call_stack
+                        .pop()
+                        .ok_or(Error::from(RuntimeError::ReturnOnNoFunction))?;
+                    let mut rc = self.register_stack.borrow_mut();
+                    let registers = rc.last_mut().unwrap();
+                    let ret_value = match value {
+                        Value::Constant(v) => v,
+                        Value::Register(r) => registers.get(r as usize)?,
+                    };
+                    self.register_stack.borrow_mut().pop();
+                    registers.set(r as usize, ret_value)?;
+                    i = new_i;
+                }
+                Instruction::Leave => {
+                    self.register_stack.borrow_mut().pop();
+                    let (new_i, _) = self
+                        .call_stack
+                        .pop()
+                        .ok_or(Error::from(RuntimeError::ReturnOnNoFunction))?;
+                    i = new_i;
                 }
                 _ => panic!("Not implemented yet"),
             }
@@ -907,7 +1030,8 @@ impl Cpu {
     }
 
     fn value_to_register(&mut self, register: u8, value: Value) -> Result<(), Error> {
-        let registers = self.current_register_stack();
+        let mut rc = self.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         match value {
             Value::Constant(v) => {
                 registers.set(register as usize, v)?;
@@ -920,23 +1044,13 @@ impl Cpu {
         Ok(())
     }
 
-    fn create_new_register_set(&mut self) -> Result<RegisterSet, Error> {
-        let address = self.allocator.malloc(256)?;
+    fn create_new_register_set(&self) -> Result<RegisterSet, Error> {
+        let address = self.allocator.borrow_mut().malloc(256)?;
         Ok(RegisterSet {
             address,
             memory: self.memory.clone(),
             size: 256,
         })
-    }
-}
-
-impl StackBasedCpu for Cpu {
-    fn current_register_stack(&mut self) -> &mut RegisterSet {
-        self.register_stack.last_mut().unwrap()
-    }
-
-    fn get_allocator(&mut self) -> &mut Allocator {
-        &mut self.allocator
     }
 }
 
@@ -977,7 +1091,8 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 
@@ -990,11 +1105,13 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         {
-            let registers = cpu.current_register_stack();
+            let mut rc = cpu.register_stack.borrow_mut();
+            let registers = rc.last_mut().unwrap();
             registers.set(1, 42).unwrap();
         }
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 
@@ -1008,7 +1125,8 @@ mod tests {
         let mut cpu = Cpu::new(260).unwrap();
         cpu.globals.insert("test".to_owned(), 42);
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 
@@ -1035,7 +1153,8 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         {
-            let registers = cpu.current_register_stack();
+            let mut rc = cpu.register_stack.borrow_mut();
+            let registers = rc.last_mut().unwrap();
             registers.set(0, 42).unwrap();
         }
         cpu.execute(program).unwrap();
@@ -1052,7 +1171,8 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 
@@ -1065,7 +1185,8 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 
@@ -1078,7 +1199,8 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 
@@ -1091,7 +1213,8 @@ mod tests {
         let program = Program(instructions);
         let mut cpu = Cpu::new(260).unwrap();
         cpu.execute(program).unwrap();
-        let registers = cpu.current_register_stack();
+        let mut rc = cpu.register_stack.borrow_mut();
+        let registers = rc.last_mut().unwrap();
         assert_eq!(registers.get(0).unwrap(), 42);
     }
 }
