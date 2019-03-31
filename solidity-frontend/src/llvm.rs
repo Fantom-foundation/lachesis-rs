@@ -1,10 +1,12 @@
 use failure::Error;
-use llvm_sys::{LLVMBuilder, LLVMModule};
+use llvm_sys::core::{
+    LLVMCreateBuilder, LLVMDisposeBuilder, LLVMDisposeModule, LLVMModuleCreateWithName,
+};
 use llvm_sys::prelude::*;
-use llvm_sys::core::{LLVMCreateBuilder, LLVMDisposeModule, LLVMDisposeBuilder, LLVMModuleCreateWithName};
-use lunarity::ast::{Program, Statement, Expression};
-use std::ffi::CString;
+use llvm_sys::{LLVMBuilder, LLVMModule};
+use lunarity::ast::{Expression, Program, Statement};
 use std::collections::HashMap;
+use std::ffi::CString;
 
 struct Module {
     module: *mut LLVMModule,
@@ -57,9 +59,7 @@ impl Builder {
 
 impl Drop for Builder {
     fn drop(&mut self) {
-        unsafe {
-            LLVMDisposeBuilder(self.builder)
-        }
+        unsafe { LLVMDisposeBuilder(self.builder) }
     }
 }
 
