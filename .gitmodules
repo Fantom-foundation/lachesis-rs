@@ -1,0 +1,3 @@
+[submodule "serial_hacking_fantom_rbvm"]
+	path = serial_hacking_fantom_rbvm
+	url = https://gitlab.com/bibloman/serial_hacking_fantom_rbvm

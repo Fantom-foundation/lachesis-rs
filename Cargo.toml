@@ -5,6 +5,8 @@ members = [
     "dvm",
     "kvdb",
     "lachesis-rs",
+    "llvm-vm-backend",
     "fal",
+    "solidity-frontend",
     "vm",
 ]
