@@ -1,10 +1,12 @@
 use failure::Error;
 use llvm_sys::core::{
-    LLVMCreateBuilder, LLVMDisposeBuilder, LLVMDisposeModule, LLVMModuleCreateWithName,
+    LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
+    LLVMDisposeBuilder, LLVMDisposeModule, LLVMModuleCreateWithNameInContext,
+    LLVMStructCreateNamed, LLVMStructSetBody,
 };
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule};
-use lunarity::ast::{Expression, Program, Statement};
+use lunarity::ast::{ContractPart, Expression, Program, SourceUnit, Statement};
 use std::collections::HashMap;
 use std::ffi::CString;
 
@@ -14,11 +16,14 @@ struct Module {
 }
 
 impl Module {
-    fn new(module_name: &str) -> Result<Module, Error> {
+    fn new(module_name: &str, context: LLVMContextRef) -> Result<Module, Error> {
         let c_module_name = CString::new(module_name)?;
         Ok(Module {
             module: unsafe {
-                LLVMModuleCreateWithName(c_module_name.to_bytes_with_nul().as_ptr() as *const _)
+                LLVMModuleCreateWithNameInContext(
+                    c_module_name.to_bytes_with_nul().as_ptr() as *const _,
+                    context,
+                )
             },
             strings: vec![c_module_name],
         })
@@ -48,10 +53,10 @@ struct Builder {
 }
 
 impl Builder {
-    fn new() -> Builder {
+    fn new(context: LLVMContextRef) -> Builder {
         unsafe {
             Builder {
-                builder: LLVMCreateBuilder(),
+                builder: LLVMCreateBuilderInContext(context),
             }
         }
     }
@@ -70,6 +75,7 @@ pub enum CodeGenerationError {
 }
 
 pub struct Context {
+    context: LLVMContextRef,
     module: Module,
     builder: Builder,
     symbols: HashMap<String, LLVMValueRef>,
@@ -77,32 +83,97 @@ pub struct Context {
 
 impl Context {
     pub fn new(name: &str) -> Result<Context, Error> {
+        let context = unsafe { LLVMContextCreate() };
         Ok(Context {
-            module: Module::new(name)?,
-            builder: Builder::new(),
+            context,
+            module: Module::new(name, context)?,
+            builder: Builder::new(context),
             symbols: HashMap::new(),
         })
     }
 }
 
+impl Drop for Context {
+    fn drop(&mut self) {
+        unsafe { LLVMContextDispose(self.context) };
+    }
+}
+
 pub trait CodeGenerator {
-    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError>;
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError>;
+}
+
+pub trait TypeGenerator {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError>;
 }
 
 impl<'a> CodeGenerator for Expression<'a> {
-    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         Err(CodeGenerationError::NotImplementedYet)
     }
 }
 
 impl<'a> CodeGenerator for Statement<'a> {
-    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         Err(CodeGenerationError::NotImplementedYet)
     }
 }
 
+impl<'a> TypeGenerator for ContractPart<'a> {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        match self {
+            _ => Err(CodeGenerationError::NotImplementedYet),
+        }
+    }
+}
+
+impl<'a> CodeGenerator for ContractPart<'a> {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        match self {
+            _ => Err(CodeGenerationError::NotImplementedYet),
+        }
+    }
+}
+
 impl<'a> CodeGenerator for Program<'a> {
-    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
-        Err(CodeGenerationError::NotImplementedYet)
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        for s in self.body() {
+            match s.value {
+                SourceUnit::ContractDefinition(c) => {
+                    let struct_type = unsafe {
+                        LLVMStructCreateNamed(
+                            context.context,
+                            context.module.new_mut_string_ptr(c.name.value),
+                        )
+                    };
+                    let mut types = Vec::new();
+                    let mut vals = Vec::new();
+                    for t in c.body {
+                        types.push(t.value.typegen(context)?);
+                        vals.push(t.value.codegen(context)?.unwrap());
+                    }
+                    unsafe {
+                        LLVMStructSetBody(
+                            struct_type,
+                            types.as_mut_ptr(),
+                            types.len() as u32,
+                            1 as LLVMBool,
+                        )
+                    };
+                    let contract = unsafe {
+                        LLVMConstStructInContext(
+                            context.context,
+                            vals.as_mut_ptr(),
+                            vals.len() as u32,
+                            1 as LLVMBool,
+                        )
+                    };
+                    context.symbols.insert(c.name.value.to_owned(), contract);
+                }
+                SourceUnit::ImportDirective(i) => Err(CodeGenerationError::NotImplementedYet)?,
+                SourceUnit::PragmaDirective(p) => Err(CodeGenerationError::NotImplementedYet)?,
+            }
+        }
+        Ok(None)
     }
 }
