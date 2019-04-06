@@ -2,13 +2,17 @@ use failure::Error;
 use llvm_sys::core::{
     LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
     LLVMDisposeBuilder, LLVMDisposeModule, LLVMModuleCreateWithNameInContext,
-    LLVMStructCreateNamed, LLVMStructSetBody,
+    LLVMStructCreateNamed, LLVMStructSetBody, LLVMIntTypeInContext, LLVMConstInt, LLVMPointerType,
+    LLVMBuildGlobalStringPtr,
 };
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule};
-use lunarity::ast::{ContractPart, Expression, Program, SourceUnit, Statement};
+use lunarity::ast::{ContractPart, ElementaryTypeName, Expression, Primitive, Program, SourceUnit, Statement, StateVariableDeclaration, TypeName};
 use std::collections::HashMap;
 use std::ffi::CString;
+
+const LLVM_FALSE: LLVMBool = 0 as LLVMBool;
+const LLVM_TRUE: LLVMBool = 1 as LLVMBool;
 
 struct Module {
     module: *mut LLVMModule,
@@ -104,12 +108,22 @@ pub trait CodeGenerator {
 }
 
 pub trait TypeGenerator {
-    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError>;
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError>;
 }
 
 impl<'a> CodeGenerator for Expression<'a> {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
-        Err(CodeGenerationError::NotImplementedYet)
+        match self {
+            Expression::PrimitiveExpression(p) => {
+                match p {
+                    Primitive::String(s) => Ok(Some(unsafe {
+                        LLVMBuildGlobalStringPtr(context.builder.builder, context.module.new_mut_string_ptr(s), context.module.new_mut_string_ptr("tempstring"))
+                    })),
+                    _ => Err(CodeGenerationError::NotImplementedYet),
+                }
+            }
+            _ => Err(CodeGenerationError::NotImplementedYet),
+        }
     }
 }
 
@@ -119,10 +133,58 @@ impl<'a> CodeGenerator for Statement<'a> {
     }
 }
 
+fn type_from_type_name(type_name: TypeName, context: &mut Context) -> LLVMTypeRef {
+    match type_name {
+        TypeName::ElementaryTypeName(e) => {
+            match e {
+                ElementaryTypeName::String => {
+                    unsafe { LLVMPointerType(uint(context, 8), 0) }
+                }
+                _ => panic!("Not implemented yet"),
+            }
+        }
+        _ => panic!("Not implemented yet"),
+    }
+}
+
 impl<'a> TypeGenerator for ContractPart<'a> {
-    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
+            ContractPart::EnumDefinition(e) => {
+                let mut counter = 0;
+                let s = find_int_size_in_bits(e.variants.iter().collect::<Vec<_>>().len());
+                let t = uint(context, s as u32);
+                for member in e.variants {
+                    let member_symbol = format!("{}_{}", e.name.value, member.value);
+                    context.symbols.insert(member_symbol, unsafe {
+                        LLVMConstInt(t, counter as u64, LLVM_FALSE)
+                    });
+                    counter += 1;
+                }
+                Ok(None)
+            }
+            ContractPart::StateVariableDeclaration(s) => {
+                Ok(Some(type_from_type_name(s.type_name.value, context)))
+            }
             _ => Err(CodeGenerationError::NotImplementedYet),
+        }
+    }
+}
+
+impl<'a> CodeGenerator for StateVariableDeclaration<'a> {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        match self.type_name.value {
+            TypeName::ElementaryTypeName(e) => {
+                match e {
+                    ElementaryTypeName::String => {
+                        let t = type_from_type_name(self.type_name.value, context);
+                        let init = self.init.map(|v| v.value).unwrap_or(Expression::PrimitiveExpression(Primitive::String("")));
+                        init.codegen(context)
+                    }
+                    _ => panic!("Not implemented yet"),
+                }
+            }
+            _ => panic!("Not implemented yet"),
         }
     }
 }
@@ -130,6 +192,7 @@ impl<'a> TypeGenerator for ContractPart<'a> {
 impl<'a> CodeGenerator for ContractPart<'a> {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         match self {
+            ContractPart::EnumDefinition(_) => Ok(None),
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }
@@ -140,6 +203,7 @@ impl<'a> CodeGenerator for Program<'a> {
         for s in self.body() {
             match s.value {
                 SourceUnit::ContractDefinition(c) => {
+                    context.symbols.clear();
                     let struct_type = unsafe {
                         LLVMStructCreateNamed(
                             context.context,
@@ -149,8 +213,11 @@ impl<'a> CodeGenerator for Program<'a> {
                     let mut types = Vec::new();
                     let mut vals = Vec::new();
                     for t in c.body {
-                        types.push(t.value.typegen(context)?);
-                        vals.push(t.value.codegen(context)?.unwrap());
+                        let element_type = t.value.typegen(context)?;
+                        if let Some(et) = element_type {
+                            types.push(et);
+                            vals.push(t.value.codegen(context)?.unwrap());
+                        }
                     }
                     unsafe {
                         LLVMStructSetBody(
@@ -176,4 +243,20 @@ impl<'a> CodeGenerator for Program<'a> {
         }
         Ok(None)
     }
+}
+
+#[inline]
+fn uint(context: &Context, bits: u32) -> LLVMTypeRef {
+    unsafe {
+        LLVMIntTypeInContext(context.context, bits)
+    }
+}
+
+#[inline]
+fn find_int_size_in_bits(number: usize) -> usize {
+    let mut start = 8;
+    while 2usize.pow(start as u32) < number {
+        start += 8;
+    }
+    start
 }
