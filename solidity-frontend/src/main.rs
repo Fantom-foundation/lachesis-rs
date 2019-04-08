@@ -18,7 +18,9 @@ fn main() {
     match parse(file_content.as_str()) {
         Ok(program) => {
             let mut context = Context::new(file_name.as_str()).unwrap();
-            let value = program.codegen(&mut context).unwrap();
+            program.codegen(&mut context).unwrap();
+            let output_file = arguments.next().unwrap();
+            context.print_to_file(output_file.as_str()).unwrap();
         }
         Err(errors) => {
             for error in errors {
