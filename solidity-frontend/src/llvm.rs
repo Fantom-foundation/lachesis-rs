@@ -84,6 +84,10 @@ pub enum CodeGenerationError {
     NumberParsingError(String),
     #[fail(display = "(Un)Fixed point numbers are not a stable feature")]
     FixedPointNumbersNotStable,
+    #[fail(display = "User defined type {} not found", 0)]
+    UserDefinedTypeNotFound(String),
+    #[fail(display = "User defined type {} has no default value", 0)]
+    UserDefinedTypeHasNoDefault(String),
 }
 
 pub struct Context {
@@ -91,6 +95,7 @@ pub struct Context {
     module: Module,
     builder: Builder,
     symbols: HashMap<String, LLVMValueRef>,
+    type_symbols: HashMap<String, LLVMTypeRef>,
 }
 
 impl Context {
@@ -101,6 +106,7 @@ impl Context {
             module: Module::new(name, context)?,
             builder: Builder::new(context),
             symbols: HashMap::new(),
+            type_symbols: HashMap::new(),
         })
     }
     pub fn print_to_file(&self, _file: &str) -> Result<(), Vec<String>> {
@@ -173,7 +179,15 @@ fn type_from_type_name(
                 Err(CodeGenerationError::FixedPointNumbersNotStable)
             }
             ElementaryTypeName::Bytes => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
-        },
+        }
+        TypeName::ArrayTypeName => {
+            Err(CodeGenerationError::NotImplementedYet)
+        }
+        TypeName::UserDefinedTypeName(user_defined_type_name) => {
+            context.type_symbols.get(user_defined_type_name).ok_or(
+                CodeGenerationError::UserDefinedTypeNotFound(user_defined_type_name.to_owned())
+            ).map(|v| v.clone())
+        }
         _ => panic!("Not implemented yet"),
     }
 }
@@ -187,15 +201,23 @@ impl<'a> TypeGenerator for ContractPart<'a> {
                 let t = uint(context, s as u32);
                 for member in e.variants {
                     let member_symbol = format!("{}_{}", e.name.value, member.value);
-                    context.symbols.insert(member_symbol, unsafe {
+                    let value = unsafe {
                         LLVMConstInt(t, counter as u64, LLVM_FALSE)
-                    });
+                    };
+                    context.symbols.insert(member_symbol, value.clone());
+                    if counter == 0 {
+                        context.symbols.insert(format!("{}@default", e.name.value), value.clone());
+                    }
                     counter += 1;
                 }
+                context.type_symbols.insert(e.name.value.to_owned(), t);
                 Ok(None)
             }
             ContractPart::StateVariableDeclaration(s) => {
                 Ok(Some(type_from_type_name(s.type_name.value, context)?))
+            }
+            ContractPart::StructDefinition(s) => {
+                Ok(None)
             }
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
@@ -254,6 +276,18 @@ impl<'a> CodeGenerator for StateVariableDeclaration<'a> {
                     .init
                     .map(|v| v.value.codegen(context))
                     .unwrap_or(Ok(Some(unsafe { LLVMConstPointerNull(uint(context, 8)) }))),
+            },
+            TypeName::ArrayTypeName => {
+                panic!("Not implemented yet!")
+            }
+            TypeName::UserDefinedTypeName(user_defined_type_name) => {
+                self.init
+                    .map(|v| v.value.codegen(context))
+                    .unwrap_or(
+                        context.symbols.get(&format!("{}@default", user_defined_type_name))
+                            .ok_or(CodeGenerationError::UserDefinedTypeHasNoDefault(user_defined_type_name.to_owned()))
+                            .map(|v| Some(v.clone()))
+                    )
             },
             _ => panic!("Not implemented yet"),
         }
