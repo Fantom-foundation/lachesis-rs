@@ -179,15 +179,15 @@ fn type_from_type_name(
                 Err(CodeGenerationError::FixedPointNumbersNotStable)
             }
             ElementaryTypeName::Bytes => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
-        }
-        TypeName::ArrayTypeName => {
-            Err(CodeGenerationError::NotImplementedYet)
-        }
-        TypeName::UserDefinedTypeName(user_defined_type_name) => {
-            context.type_symbols.get(user_defined_type_name).ok_or(
-                CodeGenerationError::UserDefinedTypeNotFound(user_defined_type_name.to_owned())
-            ).map(|v| v.clone())
-        }
+        },
+        TypeName::ArrayTypeName => Err(CodeGenerationError::NotImplementedYet),
+        TypeName::UserDefinedTypeName(user_defined_type_name) => context
+            .type_symbols
+            .get(user_defined_type_name)
+            .ok_or(CodeGenerationError::UserDefinedTypeNotFound(
+                user_defined_type_name.to_owned(),
+            ))
+            .map(|v| v.clone()),
         _ => panic!("Not implemented yet"),
     }
 }
@@ -201,12 +201,12 @@ impl<'a> TypeGenerator for ContractPart<'a> {
                 let t = uint(context, s as u32);
                 for member in e.variants {
                     let member_symbol = format!("{}_{}", e.name.value, member.value);
-                    let value = unsafe {
-                        LLVMConstInt(t, counter as u64, LLVM_FALSE)
-                    };
+                    let value = unsafe { LLVMConstInt(t, counter as u64, LLVM_FALSE) };
                     context.symbols.insert(member_symbol, value.clone());
                     if counter == 0 {
-                        context.symbols.insert(format!("{}@default", e.name.value), value.clone());
+                        context
+                            .symbols
+                            .insert(format!("{}@default", e.name.value), value.clone());
                     }
                     counter += 1;
                 }
@@ -216,9 +216,7 @@ impl<'a> TypeGenerator for ContractPart<'a> {
             ContractPart::StateVariableDeclaration(s) => {
                 Ok(Some(type_from_type_name(s.type_name.value, context)?))
             }
-            ContractPart::StructDefinition(s) => {
-                Ok(None)
-            }
+            ContractPart::StructDefinition(s) => Ok(None),
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }
@@ -277,18 +275,18 @@ impl<'a> CodeGenerator for StateVariableDeclaration<'a> {
                     .map(|v| v.value.codegen(context))
                     .unwrap_or(Ok(Some(unsafe { LLVMConstPointerNull(uint(context, 8)) }))),
             },
-            TypeName::ArrayTypeName => {
-                panic!("Not implemented yet!")
-            }
+            TypeName::ArrayTypeName => panic!("Not implemented yet!"),
             TypeName::UserDefinedTypeName(user_defined_type_name) => {
-                self.init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(
-                        context.symbols.get(&format!("{}@default", user_defined_type_name))
-                            .ok_or(CodeGenerationError::UserDefinedTypeHasNoDefault(user_defined_type_name.to_owned()))
-                            .map(|v| Some(v.clone()))
-                    )
-            },
+                self.init.map(|v| v.value.codegen(context)).unwrap_or(
+                    context
+                        .symbols
+                        .get(&format!("{}@default", user_defined_type_name))
+                        .ok_or(CodeGenerationError::UserDefinedTypeHasNoDefault(
+                            user_defined_type_name.to_owned(),
+                        ))
+                        .map(|v| Some(v.clone())),
+                )
+            }
             _ => panic!("Not implemented yet"),
         }
     }
