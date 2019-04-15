@@ -1,10 +1,18 @@
+mod non_empty;
+use crate::parser::non_empty::NonEmpty;
+
 pub enum SourceUnit {
     PragmaDirective(Identifier),
     ImportDirective(ImportDirective),
     ContractDefinition(ContractDefinition),
 }
 
-pub struct ContractDefinition {}
+pub struct ContractDefinition {
+    contract_parts: Vec<ContractPart>,
+    contract_type: ContractType,
+    inheritance_specifiers: Vec<InheritanceSpecifier>,
+    name: Identifier,
+}
 
 pub enum TypeName {
     Address,
@@ -25,7 +33,7 @@ pub enum Statement {
     Emit(FunctionCall),
     ForStatement(SimpleStatement, Expression, Expression, Box<Statement>),
     IfStatement(IfStatement),
-    InlineAssemblyStatement,
+    InlineAssemblyStatement(Option<String>, AssemblyBlock),
     PlaceholderStatement,
     Return(Option<Expression>),
     SimpleStatement(SimpleStatement),
@@ -72,15 +80,60 @@ pub enum ContractPart {
     UsingForDeclaration(UsingForDeclaration),
 }
 
-pub struct StructDefinition {}
+pub struct StructDefinition {
+    name: Identifier,
+    variables: NonEmpty<VariableDeclaration>,
+}
 
-pub struct ModifierDefinition {}
+pub struct ModifierDefinition {
+    name: Identifier,
+    parameters: Option<Vec<Parameter>>,
+}
 
-pub struct FunctionDefinition {}
+pub struct FunctionDefinition {
+    body: Option<Block>,
+    modifiers: FunctionDefinitionModifier,
+    name: Option<Identifier>,
+    parameters: Vec<Parameter>,
+    return_values: Vec<Parameter>,
+}
 
-pub struct EventDefinition {}
+pub struct EventDefinition {
+    anonymous: bool,
+    name: Identifier,
+    parameters: Vec<EventParameter>,
+}
 
-pub struct EnumDefinition {}
+pub struct EnumDefinition {
+    name: Identifier,
+    values: Vec<Identifier>,
+}
+
+pub struct EventParameter {
+    indexed: bool,
+    name: Option<Identifier>,
+    type_name: TypeName,
+}
+
+pub enum FunctionDefinitionModifier {
+    External,
+    Internal,
+    ModifierInvocation(ModifierInvocation),
+    Private,
+    Public,
+    StateMutability(StateMutability),
+}
+
+pub struct ModifierInvocation {
+    name: Identifier,
+    arguments: Vec<Expression>,
+}
+
+pub struct Parameter {
+    identifier: Option<Identifier>,
+    storage: Option<Storage>,
+    type_name: TypeName,
+}
 
 pub enum UsingForDeclaration {
     UsingForAll(Identifier),
@@ -179,12 +232,16 @@ pub struct FunctionCall {
 
 pub struct Identifier(String);
 
-pub enum FunctionModifier {
-    External,
-    Internal,
+pub enum StateMutability {
     Payable,
     Pure,
     View,
+}
+
+pub enum FunctionModifier {
+    External,
+    Internal,
+    StateMutability(StateMutability),
 }
 
 pub enum Storage {
@@ -221,16 +278,20 @@ pub struct RightUnaryExpression {
 }
 
 pub enum PrimaryExpression {
-    BooleanLiteral(bool),
     ElementaryTypeName(ElementaryTypeName),
-    HexLiteral(String),
     Identifier(Identifier),
+    Literal(Literal),
+    TupleExpression(Vec<Expression>),
+}
+
+pub enum Literal {
+    BooleanLiteral(bool),
+    HexLiteral(String),
     NumberLiteral {
         value: String,
         unit: Option<NumberUnit>,
     },
     StringLiteral(String),
-    TupleExpression(Vec<Expression>),
 }
 
 pub enum NumberUnit {
@@ -255,4 +316,71 @@ pub enum ElementaryTypeName {
     String,
     Uint(u8),
     Ufixed(u8, u8),
+}
+
+type AssemblyBlock = Vec<Box<AssemblyStatement>>;
+pub enum AssemblyStatement {
+    AssemblyBlock(AssemblyBlock),
+    AssemblyFunctionDefinition(AssemblyFunctionDefinition),
+    AssemblyVariableDeclaration(AssemblyVariableDeclaration),
+    AssemblyAssignment(AssemblyAssignment),
+    AssemblyIf(AssemblyIf),
+    AssemblyExpression(AssemblyExpression),
+    AssemblySwitch(AssemblySwitch),
+    AssemblyForLoop(AssemblyForLoop),
+    Break,
+    Continue,
+}
+
+pub struct AssemblyFunctionDefinition {
+    block: AssemblyBlock,
+    name: Identifier,
+    parameters: Vec<Identifier>,
+    return_values: Vec<Identifier>,
+}
+
+pub struct AssemblyVariableDeclaration {
+    values: Vec<AssemblyExpression>,
+    variables: NonEmpty<Identifier>,
+}
+
+pub struct AssemblyAssignment {
+    expression: AssemblyExpression,
+    variables: NonEmpty<Identifier>,
+}
+
+pub enum AssemblyExpression {
+    AssemblyFunctionCall(AssemblyFunctionCall),
+    Identifier(Identifier),
+    Literal(Literal),
+}
+
+pub struct AssemblyIf {
+    condition: AssemblyExpression,
+    block: AssemblyBlock,
+}
+
+pub struct AssemblySwitch {
+    condition: AssemblyExpression,
+    body: AssemblySwitchBody,
+}
+
+pub enum AssemblySwitchBody {
+    OnlyDefault(AssemblySwitchDefault),
+    CaseList(NonEmpty<AssemblySwitchCase>, Option<AssemblySwitchDefault>),
+}
+
+pub struct AssemblySwitchDefault(AssemblyBlock);
+pub struct AssemblySwitchCase(Literal, AssemblyBlock);
+
+pub struct AssemblyForLoop {
+    body: AssemblyBlock,
+    increment_expressions: AssemblyBlock,
+    init_values: AssemblyBlock,
+    stop_condition: AssemblyExpression,
+}
+
+pub struct AssemblyFunctionCall {
+    name: Identifier,
+    arguments: Vec<AssemblyExpression>,
 }
