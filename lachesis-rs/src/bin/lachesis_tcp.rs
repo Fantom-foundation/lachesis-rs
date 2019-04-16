@@ -7,6 +7,9 @@ use std::sync::Arc;
 const BASE_PORT: usize = 9000;
 const USAGE: &'static str = "Usage: tcp-client [number of nodes] [consensus-algorithm]";
 
+/**
+ * Main lachesis-rs TCP client entrypoint. Starts multiple TCP node peers.
+ */
 fn main() {
     env_logger::init();
     let args: Vec<String> = args().collect();

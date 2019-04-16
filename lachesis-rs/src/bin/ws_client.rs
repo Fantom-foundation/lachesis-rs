@@ -10,6 +10,9 @@ use futures::Future;
 
 use lachesis_rs::InternodeMessage;
 
+/**
+ * Main lachesis-rs WebSocket client entrypoint. Starts client and connects to server.
+ */
 fn main() {
     ::std::env::set_var("RUST_LOG", "actix_web=info");
     let _ = env_logger::init();
@@ -46,13 +49,22 @@ fn main() {
 
 struct InternodeClient(ClientWriter);
 
+/**
+ * Implement Actor for InternodeClient to start and stop
+ */
 impl Actor for InternodeClient {
     type Context = Context<Self>;
 
+    /**
+     * Start connection
+     */
     fn started(&mut self, _ctx: &mut Context<Self>) {
         info!("Connected");
     }
 
+    /**
+     * Stop connection
+     */
     fn stopped(&mut self, _: &mut Context<Self>) {
         info!("Disconnected");
 

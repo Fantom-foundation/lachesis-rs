@@ -1,5 +1,8 @@
 use lachesis_rs::Server;
 
+/**
+ * Main lachesis-rs entrypoint. Starts HTTP server.
+ */
 fn main() {
     std::env::set_var("RUST_LOG", "actix_web=info");
     env_logger::init();

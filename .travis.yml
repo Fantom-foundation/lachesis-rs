@@ -1,14 +1,46 @@
-language: rust
-rust:
-- nightly
-cache: cargo
-before_script:
-# - cargo install --force cargo-make
-- rustup component add rustfmt
-script:
-- cargo fmt --all -- --check
-- cargo test --verbose --all
-# - cargo make
-notifications:
-  slack:
-    secure: 'UzMDp+QAQmykQRh3X2zPZnxICvEH9YPynCPQ6AEsmdVb9Or3VleaYM8i+E7x5jT1HFloBJyI1G0mqrFQIbYDQug5nFUsfB2CYi7L0dpUtvoWbDMGoJ/lDI/wJDt64lqhHf9hs1aeYq454Zqcmx6/oKCgnRSyXip6y/mtOlQYjwhGN0D+TARF+6IohqJMg5iEQg4sWvugVur3GbFbatNeevLOYuhezdun4S8vhzQKsFJBK5QnIuufEyeHHjA3Ii5/yyqXUnxtRnLctjPWR+EROBO/mgqBUXPTwheiYqg9Gw9lYSRuBrtP+eixSKWnknju12YzlhAIF/HegRGzLG2PUGgLuB0TBAraaLYOODpBanVfN7DMvhg72Embdy0lZzVYPN8ImwGIU7jisWPI3x6Zz3zdI1lXZaMFS2ijlbRbYZE1YoOhS0iFQuYUc4dwu+D9Ql+IqZZ+BwE5AOy3cY149WrwGX0xaqwPad80HNHy5PUKKLxE8ZLXD0AQsWxi5M7UrHvJ7XOMRPEkskm6zNBuSXrU1vRibbtOaAC+xdPWop5j0Chf99CuIyH6NeqWVwpvl8ddTJGFZeoNXBXOp6+WAxyAJa1Z77rOvmjhdgrvcFh0o3176KCpFBQM0rWt1IVy1LFFsCP9KzMjBN1vAeEaCJZF0yQjXg/58lUTnR5a28A='
+matrix:
+  include:
+    - language: rust
+      rust:
+      - nightly
+      cache: cargo
+      before_script:
+      # - cargo install --force cargo-make
+      - rustup component add rustfmt
+      script:
+      - cargo fmt --all -- --check
+      - cargo test --verbose --all
+      # - cargo make
+      notifications:
+        slack:
+          secure: 'UzMDp+QAQmykQRh3X2zPZnxICvEH9YPynCPQ6AEsmdVb9Or3VleaYM8i+E7x5jT1HFloBJyI1G0mqrFQIbYDQug5nFUsfB2CYi7L0dpUtvoWbDMGoJ/lDI/wJDt64lqhHf9hs1aeYq454Zqcmx6/oKCgnRSyXip6y/mtOlQYjwhGN0D+TARF+6IohqJMg5iEQg4sWvugVur3GbFbatNeevLOYuhezdun4S8vhzQKsFJBK5QnIuufEyeHHjA3Ii5/yyqXUnxtRnLctjPWR+EROBO/mgqBUXPTwheiYqg9Gw9lYSRuBrtP+eixSKWnknju12YzlhAIF/HegRGzLG2PUGgLuB0TBAraaLYOODpBanVfN7DMvhg72Embdy0lZzVYPN8ImwGIU7jisWPI3x6Zz3zdI1lXZaMFS2ijlbRbYZE1YoOhS0iFQuYUc4dwu+D9Ql+IqZZ+BwE5AOy3cY149WrwGX0xaqwPad80HNHy5PUKKLxE8ZLXD0AQsWxi5M7UrHvJ7XOMRPEkskm6zNBuSXrU1vRibbtOaAC+xdPWop5j0Chf99CuIyH6NeqWVwpvl8ddTJGFZeoNXBXOp6+WAxyAJa1Z77rOvmjhdgrvcFh0o3176KCpFBQM0rWt1IVy1LFFsCP9KzMjBN1vAeEaCJZF0yQjXg/58lUTnR5a28A='
+    - language: python
+      sudo: required
+      dist: xenial
+      python:
+        - '3.7'
+      env:
+        - COMMENT_EXTRACTION=comment-extraction-master
+        - EXTRACTED_DIR=docs/extracted-comments
+        - INPUT_DIR=lachesis-rs/src
+        - LANGUAGE=rust
+        - ROOT_URL=https://github.com/Fantom-Foundation/lachesis-rs
+      before_install:
+        - curl -L https://github.com/dev10/comment-extraction/archive/master.tar.gz -o
+          comment-extraction.tgz
+        - tar xf comment-extraction.tgz
+      install:
+        - pip install -r $COMMENT_EXTRACTION/requirements.txt
+      script:
+        - >
+          python $COMMENT_EXTRACTION/antlr.py
+          -l $LANGUAGE
+          -o $EXTRACTED_DIR
+          -ct $TRAVIS_COMMIT
+          -ru $ROOT_URL
+          -d $INPUT_DIR
+      after_success:
+        - cd docs/
+        - pip install -r requirements.txt
+        - make html
+        - "./deploy.sh"
