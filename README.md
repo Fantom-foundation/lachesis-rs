@@ -60,7 +60,7 @@ digraph {
 
 ## Developer guide
 
-Install the latest version of [Rust](https://www.rust-lang.org). We tend to use nightly versions. [CLI tool for installing Rust](https://rustup.rs).
+Install the latest version of [Rust](https://www.rust-lang.org). We tend to use nightly versions. [CLI tool for installing Rust](https://rustup.rs).  Also install LLVM-7 development package.
 
 We use [rust-clippy](https://github.com/rust-lang-nursery/rust-clippy) linters to improve code quality.
 
@@ -74,6 +74,9 @@ $ curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly
 $ cargo install --force cargo-make
 # Install rustfmt (Rust formatter)
 $ rustup component add rustfmt
+# Install llvm-7 development package.
+# NB: this command is for Ubuntu 18.04, adjust it according to your system
+$ apt install llvm-7-dev
 # Clone this repo
 $ git clone https://github.com/Fantom-foundation/lachesis-rs && cd lachesis-rs
 # Run tests
