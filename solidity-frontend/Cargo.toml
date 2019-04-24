@@ -11,4 +11,3 @@ path = "src/lib.rs"
 [dependencies]
 failure = "0.1.3"
 llvm-sys = "70"
-lunarity = { git = 'https://github.com/AgustinCB/lunarity' }

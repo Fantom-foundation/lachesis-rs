@@ -1,6 +1,8 @@
 mod non_empty;
 use crate::parser::non_empty::NonEmpty;
 
+pub struct Program(pub Vec<SourceUnit>);
+
 pub enum SourceUnit {
     PragmaDirective(Identifier),
     ImportDirective(ImportDirective),
@@ -8,10 +10,10 @@ pub enum SourceUnit {
 }
 
 pub struct ContractDefinition {
-    contract_parts: Vec<ContractPart>,
+    pub contract_parts: Vec<ContractPart>,
     contract_type: ContractType,
     inheritance_specifiers: Vec<InheritanceSpecifier>,
-    name: Identifier,
+    pub name: Identifier,
 }
 
 pub enum TypeName {
@@ -105,8 +107,8 @@ pub struct EventDefinition {
 }
 
 pub struct EnumDefinition {
-    name: Identifier,
-    values: Vec<Identifier>,
+    pub name: Identifier,
+    pub values: Vec<Identifier>,
 }
 
 pub struct EventParameter {
@@ -148,14 +150,14 @@ pub enum VariableModifier {
 }
 
 pub struct StateVariableDeclaration {
-    type_name: TypeName,
+    pub type_name: TypeName,
     modifiers: Vec<VariableModifier>,
     name: Identifier,
-    value: Option<Expression>,
+    pub value: Option<Expression>,
 }
 
 pub struct UserDefinedTypeName {
-    base: Identifier,
+    pub base: Identifier,
     members: Vec<Identifier>,
 }
 
@@ -231,6 +233,12 @@ pub struct FunctionCall {
 }
 
 pub struct Identifier(String);
+
+impl Identifier {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
 
 pub enum StateMutability {
     Payable,
@@ -308,7 +316,7 @@ pub enum NumberUnit {
 }
 
 pub enum ElementaryTypeName {
-    Addreses,
+    Address,
     Bool,
     Byte(u8),
     Fixed(u8, u8),

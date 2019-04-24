@@ -1,16 +1,13 @@
+use crate::parser::*;
 use failure::Error;
 use llvm_sys::core::{
-    LLVMBuildGlobalStringPtr, LLVMConstInt, LLVMConstPointerNull, LLVMConstStructInContext,
-    LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder,
-    LLVMDisposeModule, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType,
+    LLVMBuildGlobalStringPtr, LLVMConstInt, LLVMConstStructInContext, LLVMContextCreate,
+    LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule,
+    LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType,
     LLVMStructCreateNamed, LLVMStructSetBody,
 };
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule};
-use lunarity::ast::{
-    ContractPart, ElementaryTypeName, Expression, Primitive, Program, SourceUnit,
-    StateVariableDeclaration, Statement, TypeName,
-};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::str::FromStr;
@@ -128,18 +125,18 @@ pub trait TypeGenerator {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError>;
 }
 
-impl<'a> CodeGenerator for Expression<'a> {
+impl<'a> CodeGenerator for Expression {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         match self {
-            Expression::PrimitiveExpression(p) => match p {
-                Primitive::String(s) => Ok(Some(unsafe {
+            Expression::PrimaryExpression(PrimaryExpression::Literal(l)) => match l {
+                Literal::StringLiteral(s) => Ok(Some(unsafe {
                     LLVMBuildGlobalStringPtr(
                         context.builder.builder,
                         context.module.new_string_ptr(s),
                         context.module.new_string_ptr("tempstring"),
                     )
                 })),
-                Primitive::HexNumber(s) => Ok(Some(unsafe {
+                Literal::HexLiteral(s) => Ok(Some(unsafe {
                     let value = usize::from_str(s).map_err(|_| {
                         CodeGenerationError::NumberParsingError(s.to_owned().to_owned())
                     })?;
@@ -147,7 +144,7 @@ impl<'a> CodeGenerator for Expression<'a> {
                     let t = uint(context, bits as u32);
                     LLVMConstInt(t, value as u64, LLVM_FALSE)
                 })),
-                Primitive::Bool(b) => Ok(Some(unsafe {
+                Literal::BooleanLiteral(b) => Ok(Some(unsafe {
                     LLVMConstInt(uint(context, 1), *b as _, LLVM_FALSE)
                 })),
                 _ => Err(CodeGenerationError::NotImplementedYet),
@@ -157,14 +154,14 @@ impl<'a> CodeGenerator for Expression<'a> {
     }
 }
 
-impl<'a> CodeGenerator for Statement<'a> {
+impl<'a> CodeGenerator for Statement {
     fn codegen(&self, _context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         Err(CodeGenerationError::NotImplementedYet)
     }
 }
 
 fn type_from_type_name(
-    type_name: TypeName,
+    type_name: &TypeName,
     context: &mut Context,
 ) -> Result<LLVMTypeRef, CodeGenerationError> {
     match type_name {
@@ -172,127 +169,141 @@ fn type_from_type_name(
             ElementaryTypeName::String => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
             ElementaryTypeName::Address => Ok(uint(context, 8 * 20)),
             ElementaryTypeName::Bool => Ok(uint(context, 1)),
-            ElementaryTypeName::Byte(b) => Ok(uint(context, b as u32 * 8)),
-            ElementaryTypeName::Uint(b) => Ok(uint(context, b as u32 * 8)),
-            ElementaryTypeName::Int(b) => Ok(uint(context, b as u32 * 8)),
+            ElementaryTypeName::Byte(b) => Ok(uint(context, *b as u32 * 8)),
+            ElementaryTypeName::Uint(b) => Ok(uint(context, *b as u32 * 8)),
+            ElementaryTypeName::Int(b) => Ok(uint(context, *b as u32 * 8)),
             ElementaryTypeName::Fixed(_, _) | ElementaryTypeName::Ufixed(_, _) => {
                 Err(CodeGenerationError::FixedPointNumbersNotStable)
             }
-            ElementaryTypeName::Bytes => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
         },
-        TypeName::ArrayTypeName => Err(CodeGenerationError::NotImplementedYet),
+        TypeName::ArrayTypeName(_, _) => Err(CodeGenerationError::NotImplementedYet),
         TypeName::UserDefinedTypeName(user_defined_type_name) => context
             .type_symbols
-            .get(user_defined_type_name)
+            .get(user_defined_type_name.base.as_str())
             .ok_or(CodeGenerationError::UserDefinedTypeNotFound(
-                user_defined_type_name.to_owned(),
+                user_defined_type_name.base.as_str().to_owned(),
             ))
             .map(|v| v.clone()),
         _ => panic!("Not implemented yet"),
     }
 }
 
-impl<'a> TypeGenerator for ContractPart<'a> {
+impl<'a> TypeGenerator for ContractPart {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
             ContractPart::EnumDefinition(e) => {
                 let mut counter = 0;
-                let s = find_int_size_in_bits(e.variants.iter().collect::<Vec<_>>().len());
+                let s = find_int_size_in_bits(e.values.len());
                 let t = uint(context, s as u32);
-                for member in e.variants {
-                    let member_symbol = format!("{}_{}", e.name.value, member.value);
+                for member in e.values.iter() {
+                    let member_symbol = format!("{}_{}", e.name.as_str(), member.as_str());
                     let value = unsafe { LLVMConstInt(t, counter as u64, LLVM_FALSE) };
                     context.symbols.insert(member_symbol, value.clone());
                     if counter == 0 {
                         context
                             .symbols
-                            .insert(format!("{}@default", e.name.value), value.clone());
+                            .insert(format!("{}@default", e.name.as_str()), value.clone());
                     }
                     counter += 1;
                 }
-                context.type_symbols.insert(e.name.value.to_owned(), t);
+                context.type_symbols.insert(e.name.as_str().to_owned(), t);
                 Ok(None)
             }
             ContractPart::StateVariableDeclaration(s) => {
-                Ok(Some(type_from_type_name(s.type_name.value, context)?))
+                Ok(Some(type_from_type_name(&s.type_name, context)?))
             }
-            ContractPart::StructDefinition(s) => Ok(None),
+            ContractPart::StructDefinition(_) => Ok(None),
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }
 }
 
-impl<'a> CodeGenerator for StateVariableDeclaration<'a> {
+impl<'a> CodeGenerator for StateVariableDeclaration {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
-        match self.type_name.value {
+        match &self.type_name {
             TypeName::ElementaryTypeName(e) => match e {
-                ElementaryTypeName::String => self
-                    .init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(Ok(Some(unsafe {
-                        LLVMBuildGlobalStringPtr(
-                            context.builder.builder,
-                            context.module.new_string_ptr(""),
-                            context.module.new_string_ptr("tempstr"),
-                        )
-                    }))),
-                ElementaryTypeName::Address => self
-                    .init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(Ok(Some(unsafe {
-                        LLVMConstInt(uint(context, 20), 0, LLVM_FALSE)
-                    }))),
-                ElementaryTypeName::Bool => {
-                    self.init
-                        .map(|v| v.value.codegen(context))
-                        .unwrap_or(Ok(Some(unsafe {
-                            LLVMConstInt(uint(context, 1), 0, LLVM_FALSE)
-                        })))
+                ElementaryTypeName::String => {
+                    if let Some(e) = &self.value {
+                        e.codegen(context)
+                    } else {
+                        Ok(Some(unsafe {
+                            LLVMBuildGlobalStringPtr(
+                                context.builder.builder,
+                                context.module.new_string_ptr(""),
+                                context.module.new_string_ptr("tempstr"),
+                            )
+                        }))
+                    }
                 }
-                ElementaryTypeName::Byte(b) => self
-                    .init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(Ok(Some(unsafe {
-                        LLVMConstInt(uint(context, b as u32 * 8), 0, LLVM_FALSE)
-                    }))),
-                ElementaryTypeName::Uint(b) => self
-                    .init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(Ok(Some(unsafe {
-                        LLVMConstInt(uint(context, b as u32 * 8), 0, LLVM_FALSE)
-                    }))),
-                ElementaryTypeName::Int(b) => self
-                    .init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(Ok(Some(unsafe {
-                        LLVMConstInt(uint(context, b as u32 * 8), 0, LLVM_TRUE)
-                    }))),
+                ElementaryTypeName::Address => {
+                    if let Some(e) = &self.value {
+                        e.codegen(context)
+                    } else {
+                        Ok(Some(unsafe {
+                            LLVMConstInt(uint(context, 20), 0, LLVM_FALSE)
+                        }))
+                    }
+                }
+                ElementaryTypeName::Bool => {
+                    if let Some(e) = &self.value {
+                        e.codegen(context)
+                    } else {
+                        Ok(Some(unsafe {
+                            LLVMConstInt(uint(context, 1), 0, LLVM_FALSE)
+                        }))
+                    }
+                }
+                ElementaryTypeName::Byte(b) => {
+                    if let Some(e) = &self.value {
+                        e.codegen(context)
+                    } else {
+                        Ok(Some(unsafe {
+                            LLVMConstInt(uint(context, *b as u32 * 8), 0, LLVM_FALSE)
+                        }))
+                    }
+                }
+                ElementaryTypeName::Uint(b) => {
+                    if let Some(e) = &self.value {
+                        e.codegen(context)
+                    } else {
+                        Ok(Some(unsafe {
+                            LLVMConstInt(uint(context, *b as u32 * 8), 0, LLVM_FALSE)
+                        }))
+                    }
+                }
+                ElementaryTypeName::Int(b) => {
+                    if let Some(e) = &self.value {
+                        e.codegen(context)
+                    } else {
+                        Ok(Some(unsafe {
+                            LLVMConstInt(uint(context, *b as u32 * 8), 0, LLVM_TRUE)
+                        }))
+                    }
+                }
                 ElementaryTypeName::Fixed(_, _) | ElementaryTypeName::Ufixed(_, _) => {
                     Err(CodeGenerationError::FixedPointNumbersNotStable)
                 }
-                ElementaryTypeName::Bytes => self
-                    .init
-                    .map(|v| v.value.codegen(context))
-                    .unwrap_or(Ok(Some(unsafe { LLVMConstPointerNull(uint(context, 8)) }))),
             },
-            TypeName::ArrayTypeName => panic!("Not implemented yet!"),
+            TypeName::ArrayTypeName(_, _) => panic!("Not implemented yet!"),
             TypeName::UserDefinedTypeName(user_defined_type_name) => {
-                self.init.map(|v| v.value.codegen(context)).unwrap_or(
+                if let Some(e) = &self.value {
+                    e.codegen(context)
+                } else {
                     context
                         .symbols
-                        .get(&format!("{}@default", user_defined_type_name))
+                        .get(&format!("{}@default", user_defined_type_name.base.as_str()))
                         .ok_or(CodeGenerationError::UserDefinedTypeHasNoDefault(
-                            user_defined_type_name.to_owned(),
+                            user_defined_type_name.base.as_str().to_owned(),
                         ))
-                        .map(|v| Some(v.clone())),
-                )
+                        .map(|v| Some(v.clone()))
+                }
             }
             _ => panic!("Not implemented yet"),
         }
     }
 }
 
-impl<'a> CodeGenerator for ContractPart<'a> {
+impl<'a> CodeGenerator for ContractPart {
     fn codegen(&self, _context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         match self {
             ContractPart::EnumDefinition(_) => Ok(None),
@@ -301,25 +312,25 @@ impl<'a> CodeGenerator for ContractPart<'a> {
     }
 }
 
-impl<'a> CodeGenerator for Program<'a> {
+impl<'a> CodeGenerator for Program {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
-        for s in self.body() {
-            match s.value {
+        for s in self.0.iter() {
+            match s {
                 SourceUnit::ContractDefinition(c) => {
                     context.symbols.clear();
                     let struct_type = unsafe {
                         LLVMStructCreateNamed(
                             context.context,
-                            context.module.new_string_ptr(c.name.value),
+                            context.module.new_string_ptr(c.name.as_str()),
                         )
                     };
                     let mut types = Vec::new();
                     let mut vals = Vec::new();
-                    for t in c.body {
-                        let element_type = t.value.typegen(context)?;
+                    for t in c.contract_parts.iter() {
+                        let element_type = t.typegen(context)?;
                         if let Some(et) = element_type {
                             types.push(et);
-                            vals.push(t.value.codegen(context)?.unwrap());
+                            vals.push(t.codegen(context)?.unwrap());
                         }
                     }
                     unsafe {
@@ -338,7 +349,7 @@ impl<'a> CodeGenerator for Program<'a> {
                             1 as LLVMBool,
                         )
                     };
-                    context.symbols.insert(c.name.value.to_owned(), contract);
+                    context.symbols.insert(c.name.as_str().to_owned(), contract);
                 }
                 SourceUnit::ImportDirective(_) => Err(CodeGenerationError::NotImplementedYet)?,
                 SourceUnit::PragmaDirective(_) => Err(CodeGenerationError::NotImplementedYet)?,

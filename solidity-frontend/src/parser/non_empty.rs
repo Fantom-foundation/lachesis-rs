@@ -21,10 +21,10 @@ impl<T> TryFrom<Vec<T>> for NonEmpty<T> {
     }
 }
 
-impl<T> TryFrom<&[T]> for NonEmpty<T> {
+impl<T: Clone> TryFrom<&[T]> for NonEmpty<T> {
     type Error = EmptyVectorError;
     fn try_from(source: &[T]) -> Result<NonEmpty<T>, Self::Error> {
-        NonEmpty::try_from(source.to_owned())
+        NonEmpty::try_from(source.to_vec())
     }
 }
 

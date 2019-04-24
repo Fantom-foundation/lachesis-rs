@@ -1,4 +1,3 @@
-use lunarity::parse;
 use solidity_frontend::*;
 use std::env::args;
 use std::fs::read_to_string;
