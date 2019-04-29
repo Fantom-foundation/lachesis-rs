@@ -1065,7 +1065,7 @@ mod tests {
     use std::iter::FromIterator;
     use std::sync::Arc;
 
-    fn create_node() -> Swirlds<DummyPeer, BTreeHashgraph> {
+    fn create_node() -> Swirlds<TestDummyPeer, BTreeHashgraph> {
         let rng = rand::SystemRandom::new();
         let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let kp =
@@ -1074,10 +1074,10 @@ mod tests {
         Swirlds::new(kp, hashgraph).unwrap()
     }
 
-    fn create_useless_peer(id: PeerId) -> Arc<DummyPeer> {
+    fn create_useless_peer(id: PeerId) -> Arc<TestDummyPeer> {
         let digest = digest(&SHA256, b"42");
         let event = EventHash::new(digest.as_ref());
-        Arc::new(DummyPeer {
+        Arc::new(TestDummyPeer {
             hashgraph: BTreeHashgraph::new(),
             head: event,
             id,
@@ -1085,13 +1085,13 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct DummyPeer {
+    struct TestDummyPeer {
         hashgraph: BTreeHashgraph,
         head: EventHash,
         id: PeerId,
     }
 
-    impl Peer<BTreeHashgraph> for DummyPeer {
+    impl Peer<BTreeHashgraph> for TestDummyPeer {
         fn get_sync(
             &self,
             _pk: PeerId,
