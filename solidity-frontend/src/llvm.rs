@@ -1,13 +1,15 @@
 use crate::parser::*;
 use failure::Error;
 use llvm_sys::core::{
-    LLVMBuildGlobalStringPtr, LLVMConstInt, LLVMConstStructInContext, LLVMContextCreate,
-    LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule,
-    LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType,
-    LLVMStructCreateNamed, LLVMStructSetBody,
+    LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildGlobalStringPtr, LLVMConstArray,
+    LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstPointerNull, LLVMConstStructInContext,
+    LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder,
+    LLVMDisposeModule, LLVMFunctionType, LLVMGetTypeKind, LLVMIntTypeInContext,
+    LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody,
+    LLVMVoidType,
 };
 use llvm_sys::prelude::*;
-use llvm_sys::{LLVMBuilder, LLVMModule};
+use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::str::FromStr;
@@ -85,6 +87,8 @@ pub enum CodeGenerationError {
     UserDefinedTypeNotFound(String),
     #[fail(display = "User defined type {} has no default value", 0)]
     UserDefinedTypeHasNoDefault(String),
+    #[fail(display = "Array length has to be integral")]
+    InvalidArrayLength,
 }
 
 pub struct Context {
@@ -154,9 +158,34 @@ impl<'a> CodeGenerator for Expression {
     }
 }
 
+impl<'a> TypeGenerator for Expression {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        match self {
+            _ => Err(CodeGenerationError::NotImplementedYet),
+        }
+    }
+}
+
 impl<'a> CodeGenerator for Statement {
     fn codegen(&self, _context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         Err(CodeGenerationError::NotImplementedYet)
+    }
+}
+
+fn type_from_elementary_type_name(
+    elementary_type_name: &ElementaryTypeName,
+    context: &mut Context,
+) -> Result<LLVMTypeRef, CodeGenerationError> {
+    match elementary_type_name {
+        ElementaryTypeName::String => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
+        ElementaryTypeName::Address => Ok(uint(context, 8 * 20)),
+        ElementaryTypeName::Bool => Ok(uint(context, 1)),
+        ElementaryTypeName::Byte(b) => Ok(uint(context, *b as u32 * 8)),
+        ElementaryTypeName::Uint(b) => Ok(uint(context, *b as u32 * 8)),
+        ElementaryTypeName::Int(b) => Ok(uint(context, *b as u32 * 8)),
+        ElementaryTypeName::Fixed(_, _) | ElementaryTypeName::Ufixed(_, _) => {
+            Err(CodeGenerationError::FixedPointNumbersNotStable)
+        }
     }
 }
 
@@ -165,18 +194,20 @@ fn type_from_type_name(
     context: &mut Context,
 ) -> Result<LLVMTypeRef, CodeGenerationError> {
     match type_name {
-        TypeName::ElementaryTypeName(e) => match e {
-            ElementaryTypeName::String => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
-            ElementaryTypeName::Address => Ok(uint(context, 8 * 20)),
-            ElementaryTypeName::Bool => Ok(uint(context, 1)),
-            ElementaryTypeName::Byte(b) => Ok(uint(context, *b as u32 * 8)),
-            ElementaryTypeName::Uint(b) => Ok(uint(context, *b as u32 * 8)),
-            ElementaryTypeName::Int(b) => Ok(uint(context, *b as u32 * 8)),
-            ElementaryTypeName::Fixed(_, _) | ElementaryTypeName::Ufixed(_, _) => {
-                Err(CodeGenerationError::FixedPointNumbersNotStable)
-            }
-        },
-        TypeName::ArrayTypeName(_, _) => Err(CodeGenerationError::NotImplementedYet),
+        TypeName::ElementaryTypeName(e) => type_from_elementary_type_name(e, context),
+        TypeName::ArrayTypeName(t, None) => {
+            Ok(unsafe { LLVMArrayType(t.typegen(context)?.unwrap(), 0) })
+        }
+        TypeName::ArrayTypeName(t, Some(e)) => {
+            let et = e.typegen(context)?.unwrap();
+            if unsafe { LLVMGetTypeKind(et) } != LLVMTypeKind::LLVMIntegerTypeKind {
+                Err(CodeGenerationError::InvalidArrayLength)?
+            };
+            let t = t.typegen(context)?.unwrap();
+            let v = e.codegen(context)?.unwrap();
+            let size = unsafe { LLVMConstIntGetZExtValue(v) } as u32;
+            Ok(unsafe { LLVMArrayType(t, size) })
+        }
         TypeName::UserDefinedTypeName(user_defined_type_name) => context
             .type_symbols
             .get(user_defined_type_name.base.as_str())
@@ -184,11 +215,43 @@ fn type_from_type_name(
                 user_defined_type_name.base.as_str().to_owned(),
             ))
             .map(|v| v.clone()),
+        TypeName::Address => Ok(uint(context, 20 * 8)),
+        TypeName::AddressPayable => Ok(uint(context, 20 * 8)),
+        TypeName::Mapping(k, v) => {
+            let key_type = type_from_elementary_type_name(k, context)?;
+            let value_type = v.typegen(context)?.unwrap();
+            Ok(mapping(context, key_type, value_type))
+        }
+        TypeName::FunctionTypeName(f) => {
+            let return_type = f.return_values[0].type_name.typegen(context)?.unwrap();
+            let mut param_types: Vec<LLVMTypeRef> = f
+                .arguments
+                .iter()
+                .map(|p| p.type_name.typegen(context))
+                .collect::<Result<Vec<Option<LLVMTypeRef>>, CodeGenerationError>>()?
+                .iter()
+                .map(|v| v.unwrap())
+                .collect::<Vec<LLVMTypeRef>>();
+            Ok(unsafe {
+                LLVMFunctionType(
+                    return_type,
+                    param_types.as_mut_ptr(),
+                    param_types.len() as u32,
+                    LLVM_FALSE,
+                )
+            })
+        }
         _ => panic!("Not implemented yet"),
     }
 }
 
-impl<'a> TypeGenerator for ContractPart {
+impl TypeGenerator for TypeName {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        Ok(Some(type_from_type_name(self, context)?))
+    }
+}
+
+impl TypeGenerator for ContractPart {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
             ContractPart::EnumDefinition(e) => {
@@ -284,7 +347,15 @@ impl<'a> CodeGenerator for StateVariableDeclaration {
                     Err(CodeGenerationError::FixedPointNumbersNotStable)
                 }
             },
-            TypeName::ArrayTypeName(_, _) => panic!("Not implemented yet!"),
+            TypeName::ArrayTypeName(_, _) => {
+                if let Some(e) = &self.value {
+                    e.codegen(context)
+                } else {
+                    Ok(Some(unsafe {
+                        LLVMConstPointerNull(self.type_name.typegen(context)?.unwrap())
+                    }))
+                }
+            }
             TypeName::UserDefinedTypeName(user_defined_type_name) => {
                 if let Some(e) = &self.value {
                     e.codegen(context)
@@ -296,6 +367,24 @@ impl<'a> CodeGenerator for StateVariableDeclaration {
                             user_defined_type_name.base.as_str().to_owned(),
                         ))
                         .map(|v| Some(v.clone()))
+                }
+            }
+            TypeName::Address => {
+                if let Some(e) = &self.value {
+                    e.codegen(context)
+                } else {
+                    Ok(Some(unsafe {
+                        LLVMConstInt(uint(context, 20 * 8), 0, LLVM_FALSE)
+                    }))
+                }
+            }
+            TypeName::AddressPayable => {
+                if let Some(e) = &self.value {
+                    e.codegen(context)
+                } else {
+                    Ok(Some(unsafe {
+                        LLVMConstInt(uint(context, 20 * 8), 0, LLVM_FALSE)
+                    }))
                 }
             }
             _ => panic!("Not implemented yet"),
@@ -338,7 +427,7 @@ impl<'a> CodeGenerator for Program {
                             struct_type,
                             types.as_mut_ptr(),
                             types.len() as u32,
-                            1 as LLVMBool,
+                            LLVM_TRUE,
                         )
                     };
                     let contract = unsafe {
@@ -346,7 +435,7 @@ impl<'a> CodeGenerator for Program {
                             context.context,
                             vals.as_mut_ptr(),
                             vals.len() as u32,
-                            1 as LLVMBool,
+                            LLVM_TRUE,
                         )
                     };
                     context.symbols.insert(c.name.as_str().to_owned(), contract);
@@ -358,6 +447,69 @@ impl<'a> CodeGenerator for Program {
         Ok(None)
     }
 }
+
+fn mapping(context: &mut Context, key: LLVMTypeRef, value: LLVMTypeRef) -> LLVMTypeRef {
+    let mapping_name = format!("mapping<{:?}, {:?}>", key, value);
+    let internal_array_type = unsafe { LLVMPointerType(value, 0) };
+    let size_type = uint(context, 32);
+    let get_function_type =
+        unsafe { LLVMFunctionType(value, vec![key].as_mut_ptr(), 0, LLVM_FALSE) };
+    let set_function_type =
+        unsafe { LLVMFunctionType(LLVMVoidType(), vec![key, value].as_mut_ptr(), 0, LLVM_FALSE) };
+    let struct_type = unsafe {
+        LLVMStructCreateNamed(
+            context.context,
+            context.module.new_string_ptr(mapping_name.as_str()),
+        )
+    };
+    let mut types = vec![
+        internal_array_type,
+        size_type,
+        get_function_type,
+        set_function_type,
+    ];
+    unsafe {
+        LLVMStructSetBody(
+            struct_type,
+            types.as_mut_ptr(),
+            types.len() as u32,
+            1 as LLVMBool,
+        )
+    };
+    struct_type
+}
+
+/*
+fn mapping_value(context: &mut Context, key: LLVMTypeRef, value: LLVMTypeRef) -> LLVMValueRef {
+    let internal_array = unsafe {
+        LLVMConstArray(internal_array_type, Vec::new().as_mut_ptr(), 0)
+    };
+    let size = unsafe { LLVMConstInt(size_type, 0, LLVM_FALSE) };
+    let get_function = unsafe {
+        LLVMAddFunction(
+            context.module.module,
+            context.module.new_string_ptr(format!("{}.get", mapping_name).as_str()),
+            get_function_type
+        )
+    };
+    let set_function = unsafe {
+        LLVMAddFunction(
+            context.module.module,
+            context.module.new_string_ptr(format!("{}.set", mapping_name).as_str()),
+            set_function_type
+        )
+    };
+    let mut vals = vec![internal_array, size, get_function, set_function];
+    unsafe {
+        LLVMConstStructInContext(
+            context.context,
+            vals.as_mut_ptr(),
+            vals.len() as u32,
+            LLVM_TRUE,
+        )
+    }
+}
+*/
 
 #[inline]
 fn uint(context: &Context, bits: u32) -> LLVMTypeRef {
@@ -371,4 +523,20 @@ fn find_int_size_in_bits(number: usize) -> usize {
         start += 8;
     }
     start
+}
+
+#[inline]
+fn hash_function(context: &mut Context) -> LLVMValueRef {
+    let u32_type = uint(context, 8 * 32);
+    let function_type =
+        unsafe { LLVMFunctionType(u32_type, vec![u32_type].as_mut_ptr(), 2, LLVM_FALSE) };
+    let function = unsafe {
+        LLVMAddFunction(
+            context.module.module,
+            context.module.new_string_ptr("hash"),
+            function_type,
+        )
+    };
+    let block = unsafe { LLVMAppendBasicBlock(function, context.module.new_string_ptr("entry")) };
+    function
 }

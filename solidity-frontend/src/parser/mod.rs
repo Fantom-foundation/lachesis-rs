@@ -746,13 +746,13 @@ pub enum Storage {
 }
 
 pub struct FunctionTypeName {
-    arguments: Vec<FunctionParameter>,
+    pub arguments: Vec<FunctionParameter>,
     modifiers: Vec<FunctionModifier>,
-    return_values: Vec<FunctionParameter>,
+    pub return_values: Vec<FunctionParameter>,
 }
 
 pub struct FunctionParameter {
-    type_name: TypeName,
+    pub type_name: TypeName,
     storage: Option<Storage>,
 }
 
