@@ -45,9 +45,218 @@ named!(primary_expression<&str, PrimaryExpression>, alt_complete!(
 named!(literal<&str, Literal>, alt_complete!(boolean_literal | string_literal | number_literal | hex_literal));
 
 named!(type_name<&str, TypeName>, alt_complete!(
-    elementary_type_name => {|e| TypeName::ElementaryTypeName(e)}
+    elementary_type_name => {|e| TypeName::ElementaryTypeName(e)} |
+    user_defined_type_name => {|e| TypeName::UserDefinedTypeName(e)} | mapping | array_type_name |
+    function_type_name => {|f| TypeName::FunctionTypeName(f)} | address_payable
 ));
 
+named!(statement<&str, Statement>, alt_complete!(
+    if_statement | while_statement | for_statement | block_statement | do_while_statement | placeholder_statement |
+    emit_statement | throw_statement | return_statement | break_statement | simple_statement_statement
+));
+
+named!(space<&str, &str>, eat_separator!(" \n\t"));
+named!(address_payable<&str, TypeName>, do_parse!(
+    tag!("address") >> space >> tag!("payable") >> (TypeName::AddressPayable)
+));
+named!(function_type_name<&str, FunctionTypeName>, do_parse!(
+                   tag!("function") >>
+    arguments:     function_parameter_list0 >>
+    modifiers:     many0!(function_modifier) >>
+                   tag!("returns") >>
+    return_values: function_parameter_list0 >>
+    (FunctionTypeName { arguments, modifiers, return_values })
+
+));
+named!(function_parameter_list0<&str, Vec<FunctionParameter>>, do_parse!(
+    list: delimited!(tag!("("), opt!(function_parameter_list), tag!(")")) >>
+    (list.unwrap_or_else(Vec::new))
+));
+named!(function_parameter_list<&str, Vec<FunctionParameter>>, do_parse!(
+    head: function_parameter >>
+    tail: many0!(do_parse!(
+        tag!(",") >> function_parameter: function_parameter >> (function_parameter)
+    )) >>
+    ({
+        let mut res = vec![head];
+        res.extend(tail);
+        res
+    })
+));
+named!(function_parameter<&str, FunctionParameter>, do_parse!(
+    type_name: type_name >>
+               space >>
+    storage:   opt!(storage) >>
+    (FunctionParameter { type_name, storage })
+));
+named!(function_modifier<&str, FunctionModifier>, alt_complete!(
+    state_mutability => {|s| FunctionModifier::StateMutability(s)} |
+    tag!("external") => {|_| FunctionModifier::External} |
+    tag!("internal") => {|_| FunctionModifier::Internal}
+));
+named!(state_mutability<&str, StateMutability>, alt_complete!(
+    tag!("payable") => {|_| StateMutability::Payable} |
+    tag!("pure") => {|_| StateMutability::Pure} |
+    tag!("view") => {|_| StateMutability::View}
+));
+named!(array_type_name<&str, TypeName>, do_parse!(
+    type_name:  type_name >>
+    capacity:   opt!(expression) >>
+    (TypeName::ArrayTypeName(Box::new(type_name), capacity.map(Box::new)))
+));
+named!(mapping<&str, TypeName>, do_parse!(
+           tag!("mapping") >>
+           tag!("(") >>
+    key:   elementary_type_name >>
+           tag!("=>") >>
+    value: type_name >>
+           tag!(")") >>
+    (TypeName::Mapping(key, Box::new(value)))
+));
+named!(user_defined_type_name<&str, UserDefinedTypeName>, do_parse!(
+    base:    identifier >>
+    members: many0!(identifier) >>
+    (UserDefinedTypeName { base, members })
+));
+named!(if_statement<&str, Statement>, do_parse!(
+                 tag!("if") >>
+                 tag!("(") >>
+    condition:   expression >>
+                 tag!(")") >>
+    body:        statement >>
+    else_branch: opt!(else_statement) >>
+    (Statement::IfStatement(IfStatement {
+        condition, true_branch: Box::new(body), false_branch: else_branch.map(|s| Box::new(s))
+    }))
+));
+named!(else_statement<&str, Statement>, do_parse!(
+    tag!("else") >> statement: statement >> (statement)
+));
+named!(while_statement<&str, Statement>, do_parse!(
+                tag!("while") >>
+                tag!("(") >>
+    expression: expression >>
+                tag!(")") >>
+    statement:  statement >>
+    (Statement::WhileStatement(expression, Box::new(statement)))
+));
+named!(for_statement<&str, Statement>, do_parse!(
+                    tag!("for") >>
+                    tag!("(") >>
+    initialization: opt!(simple_statement) >>
+                    tag!(";") >>
+    condition:      opt!(expression) >>
+                    tag!(";") >>
+    increment:      opt!(expression) >>
+                    tag!(")") >>
+    body:           statement >>
+    (Statement::ForStatement(initialization, condition, increment, Box::new(body)))
+));
+named!(block_statement<&str, Statement>, do_parse!(
+                tag!("{") >>
+    statements: many0!(statement) >>
+                tag!("}") >>
+    (Statement::Block(statements))
+));
+named!(do_while_statement<&str, Statement>, do_parse!(
+                tag!("do") >>
+    statement:  statement >>
+                tag!("while") >>
+                tag!("(") >>
+    expression: expression >>
+                tag!(")") >>
+                tag!(";") >>
+    (Statement::DoWhileStatement(Box::new(statement), expression))
+));
+named!(placeholder_statement<&str, Statement>, do_parse!(
+    tag!("_") >> tag!(";") >> (Statement::PlaceholderStatement)
+));
+named!(emit_statement<&str, Statement>, ws!(do_parse!(
+                   tag!("emit") >>
+    function_call: function_call >>
+                   tag!(";") >>
+    (Statement::Emit(function_call))
+)));
+named!(return_statement<&str, Statement>, alt_complete!(
+    expression_return_statement | empty_return_statement
+));
+named!(expression_return_statement<&str, Statement>, ws!(do_parse!(
+                tag!("return") >>
+    expression: expression >>
+                tag!(";") >>
+    (Statement::Return(Some(expression)))
+)));
+named!(empty_return_statement<&str, Statement>, do_parse!(
+    tag!("return") >> tag!(";") >> (Statement::Return(None))
+));
+named!(throw_statement<&str, Statement>, do_parse!(
+    tag!("throw") >> tag!(";") >> (Statement::Throw)
+));
+named!(continue_statement<&str, Statement>, do_parse!(
+    tag!("continue") >> tag!(";") >> (Statement::Continue)
+));
+named!(break_statement<&str, Statement>, do_parse!(
+    tag!("break") >> tag!(";") >> (Statement::Break)
+));
+named!(simple_statement_statement<&str, Statement>, do_parse!(
+    simple_statement: simple_statement >> tag!(";") >> (Statement::SimpleStatement(simple_statement))
+));
+named!(simple_statement<&str, SimpleStatement>, alt_complete!(
+    expression_statement | variable_definition
+));
+named!(expression_statement<&str, SimpleStatement>, do_parse!(
+    expression: expression >> (SimpleStatement::ExpressionStatement(expression))
+));
+named!(variable_declaration_element<&str, VariableDeclaration>, ws!(do_parse!(
+             tag!(",") >>
+    element: variable_declaration >>
+    (element)
+)));
+named!(variable_declaration_tail<&str, Vec<VariableDeclaration>>,
+    many0!(variable_declaration_element));
+named!(variable_declaration_list<&str, Vec<VariableDeclaration>>, do_parse!(
+    first: variable_declaration_element >>
+    tail:  variable_declaration_tail >>
+    ({
+        let mut vec = vec![first];
+        vec.extend(tail);
+        vec
+    })
+));
+named!(initialized_variable_definition<&str, SimpleStatement>, ws!(do_parse!(
+    definitions: variable_declaration_list >>
+                 tag!("=") >>
+    expression:  expression >>
+                 tag!(";") >>
+    (SimpleStatement::VariableDefinition(definitions, Some(expression)))
+)));
+named!(simple_variable_definition<&str, SimpleStatement>, do_parse!(
+    definitions: variable_declaration_list >>
+                 tag!(";") >>
+    (SimpleStatement::VariableDefinition(definitions, None))
+));
+named!(variable_definition<&str, SimpleStatement>, alt_complete!(
+    initialized_variable_definition | simple_variable_definition
+));
+named!(variable_declaration<&str, VariableDeclaration>, alt_complete!(
+    partial_variable_declaration | full_variable_declaration
+));
+named!(partial_variable_declaration<&str, VariableDeclaration>, ws!(do_parse!(
+    type_name: type_name >>
+    identifier: identifier >>
+    (VariableDeclaration {storage: None, type_name, identifier})
+)));
+named!(full_variable_declaration<&str, VariableDeclaration>, ws!(do_parse!(
+    type_name: type_name >>
+    storage: storage >>
+    identifier: identifier >>
+    (VariableDeclaration {storage: Some(storage), type_name, identifier})
+)));
+named!(storage<&str, Storage>, alt_complete!(
+    tag!("calldata") => {|_| Storage::Calldata} |
+    tag!("memory") => {|_| Storage::Memory} |
+    tag!("storage") => {|_| Storage::Storage}
+));
 named!(assignment_binary_expression<&str, Expression>, ws!(do_parse!(
     left:  expression >>
     op:    assignment_operators >>
@@ -231,9 +440,13 @@ named!(group_expression<&str, Expression>, ws!(do_parse!(
     (Expression::GroupExpression(Box::new(expression)))
 )));
 named!(function_call_expression<&str, Expression>, ws!(do_parse!(
+    function_call: function_call >>
+    (Expression::FunctionCall(function_call))
+)));
+named!(function_call<&str, FunctionCall>, ws!(do_parse!(
     callee: expression >>
     args:   function_call_arguments >>
-    (Expression::FunctionCall(FunctionCall {callee: Box::new(callee), arguments: args}))
+    (FunctionCall {callee: Box::new(callee), arguments: args})
 )));
 named!(function_call_arguments<&str, FunctionCallArguments>, alt_complete!(
     name_value_list => {|e| FunctionCallArguments::NameValueList(e)} |
@@ -509,7 +722,7 @@ pub enum Statement {
     Continue,
     DoWhileStatement(Box<Statement>, Expression),
     Emit(FunctionCall),
-    ForStatement(SimpleStatement, Expression, Expression, Box<Statement>),
+    ForStatement(Option<SimpleStatement>, Option<Expression>, Option<Expression>, Box<Statement>),
     IfStatement(IfStatement),
     InlineAssemblyStatement(Option<String>, AssemblyBlock),
     PlaceholderStatement,
@@ -646,7 +859,7 @@ pub enum ImportDirective {
 pub struct IfStatement {
     condition: Expression,
     true_branch: Box<Statement>,
-    false_branch: Box<Statement>,
+    false_branch: Option<Box<Statement>>,
 }
 
 pub struct VariableDeclaration {
