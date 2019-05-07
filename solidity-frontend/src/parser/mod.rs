@@ -918,8 +918,8 @@ pub enum BinaryOperator {
 }
 
 pub struct FunctionCall {
-    callee: Box<Expression>,
-    arguments: FunctionCallArguments,
+    pub callee: Box<Expression>,
+    pub arguments: FunctionCallArguments,
 }
 
 pub enum FunctionCallArguments {
@@ -929,7 +929,7 @@ pub enum FunctionCallArguments {
 
 pub struct NameValue {
     parameter: Identifier,
-    value: Box<Expression>,
+    pub value: Box<Expression>,
 }
 
 pub struct Identifier(String);
@@ -976,13 +976,13 @@ pub struct BinaryExpression {
 }
 
 pub struct LeftUnaryExpression {
-    value: Box<Expression>,
-    op: LeftUnaryOperator,
+    pub value: Box<Expression>,
+    pub op: LeftUnaryOperator,
 }
 
 pub struct RightUnaryExpression {
-    value: Box<Expression>,
-    op: RightUnaryOperator,
+    pub value: Box<Expression>,
+    pub op: RightUnaryOperator,
 }
 
 pub enum PrimaryExpression {
