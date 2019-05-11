@@ -1,5 +1,6 @@
 mod non_empty;
 use crate::parser::non_empty::NonEmpty;
+use std::convert::TryFrom;
 use std::str::FromStr;
 
 #[inline]
@@ -26,6 +27,41 @@ fn is_digit_identifier(c: char) -> bool {
 fn vec_to_string(s: Vec<char>) -> String {
     s.into_iter().collect::<String>()
 }
+
+named!(contract_definition<&str, ContractDefinition>, do_parse!(
+    contract_type:          contract_type >>
+    name:                   identifier >>
+    contract_parts:         delimited!(tag!("{"), many0!(contract_part), tag!("}")) >>
+    inheritance_specifiers: opt!(do_parse!(
+           tag!("is") >>
+        l: do_parse!(
+            head: inheritance_specifier >>
+            tail: many0!(do_parse!(tag!(",") >> i: inheritance_specifier >> (i))) >>
+            ({
+                let mut is = vec![head];
+                is.extend(tail);
+                is
+            })
+        ) >>
+        (l)
+    )) >>
+    (ContractDefinition{
+        contract_parts,
+        contract_type,
+        inheritance_specifiers: inheritance_specifiers.unwrap_or(Vec::new()),
+        name,
+    })
+));
+
+named!(contract_part<&str, ContractPart>, alt_complete!(
+    state_variable_declaration => {|s| ContractPart::StateVariableDeclaration(s)} |
+    using_for_declaration => {|d| ContractPart::UsingForDeclaration(d)} |
+    struct_definition => {|s| ContractPart::StructDefinition(s)} |
+    modifier_definition => {|m| ContractPart::ModifierDefinition(m)} |
+    function_definition => {|f| ContractPart::FunctionDefinition(f)} |
+    event_definition => {|e| ContractPart::EventDefinition(e)} |
+    enum_definition => {|e| ContractPart::EnumDefinition(e)}
+));
 
 named!(expression<&str, Expression>, alt_complete!(
     right_unary_expression | new_expression | index_access | member_access | function_call_expression |
@@ -55,6 +91,181 @@ named!(statement<&str, Statement>, alt_complete!(
     emit_statement | throw_statement | return_statement | break_statement | simple_statement_statement
 ));
 
+named!(contract_type<&str, ContractType>, alt_complete!(
+    tag!("contract") => {|_| ContractType::Contract} |
+    tag!("library") => {|_| ContractType::Library} |
+    tag!("interface") => {|_| ContractType::Interface}
+));
+named!(inheritance_specifier<&str, InheritanceSpecifier>, do_parse!(
+    parent:    user_defined_type_name >>
+    arguments: opt!(delimited!(
+        tag!("("),
+        do_parse!(
+            head: expression >>
+            tail: many0!(do_parse!(tag!(",") >> e: expression >> (e))) >>
+            ({
+                let mut es = vec![head];
+                es.extend(tail);
+                es
+            })
+        ),
+        tag!(")")
+    )) >>
+    (InheritanceSpecifier {
+        parent,
+        arguments: arguments.unwrap_or(Vec::new()),
+    })
+));
+named!(function_definition<&str, FunctionDefinition>, do_parse!(
+                   tag!("function") >>
+    name:          opt!(identifier) >>
+    parameters:    parameter_list >>
+    modifiers:     many0!(function_definition_modifier) >>
+    return_values: opt!(do_parse!(tag!("returns") >> l: parameter_list >> (l))) >>
+    body:          alt_complete!(
+        tag!(";") => {|_| None} |
+        delimited!(tag!("{"), many0!(statement), tag!("}")) => {|b| Some(b)}
+    ) >>
+    (
+        FunctionDefinition {
+            body,
+            modifiers,
+            name,
+            parameters,
+            return_values: return_values.unwrap_or(Vec::new()),
+        }
+    )
+));
+named!(function_definition_modifier<&str, FunctionDefinitionModifier>, alt_complete!(
+    tag!("external") => {|_| FunctionDefinitionModifier::External} |
+    tag!("internal") => {|_| FunctionDefinitionModifier::Internal} |
+    modifier_invocation => {|m| FunctionDefinitionModifier::ModifierInvocation(m)} |
+    tag!("private") => {|_| FunctionDefinitionModifier::Private} |
+    tag!("public") => {|_| FunctionDefinitionModifier::Public} |
+    state_mutability => {|s| FunctionDefinitionModifier::StateMutability(s)}
+));
+named!(modifier_invocation<&str, ModifierInvocation>, do_parse!(
+    name:      identifier >>
+    arguments: delimited!(
+        tag!("("),
+        do_parse!(
+            head: expression >>
+            tail: many0!(do_parse!(tag!(",") >> e: expression >>(e))) >>
+            ({
+                let mut es = vec![head];
+                es.extend(tail);
+                es
+            })
+        ),
+        tag!(")")
+    ) >>
+    (ModifierInvocation { name, arguments })
+));
+named!(event_definition<&str, EventDefinition>, do_parse!(
+                tag!("event") >>
+    name:       identifier >>
+    parameters: event_parameter_list >>
+    anonymous:  opt!(tag!("anonymous")) >>
+    (EventDefinition {name, parameters, anonymous: anonymous.is_some()})
+));
+named!(event_parameter_list<&str, Vec<EventParameter>>, do_parse!(
+    head: event_parameter >>
+    tail: many0!(do_parse!(tag!(",") >> ep: event_parameter >> (ep))) >>
+    ({
+        let mut l = vec![head];
+        l.extend(tail);
+        l
+    })
+));
+named!(event_parameter<&str, EventParameter>, do_parse!(
+    type_name:  type_name >>
+    indexed:    opt!(tag!("indexed")) >>
+    name:       opt!(identifier) >>
+    (EventParameter {type_name, indexed: indexed.is_some(), name})
+));
+named!(modifier_definition<&str, ModifierDefinition>, do_parse!(
+                tag!("modifier") >>
+    name:       identifier >>
+    parameters: opt!(parameter_list) >>
+    block:      delimited!(tag!("{"), many0!(statement), tag!("}")) >>
+    (ModifierDefinition {name, parameters, block})
+));
+named!(parameter_list<&str, Vec<Parameter>>, delimited!(
+    tag!("("),
+    do_parse!(
+        head: parameter >>
+        tail: many0!(do_parse!(tag!(",") >> p: parameter >> (p))) >>
+        ({
+            let mut l = vec![head];
+            l.extend(tail);
+            l
+        })
+    ),
+    tag!(")")
+));
+named!(parameter<&str, Parameter>, do_parse!(
+    type_name:  type_name >>
+    storage:    opt!(storage) >>
+    identifier: opt!(identifier) >>
+    (Parameter {type_name, storage, identifier})
+));
+named!(enum_definition<&str, EnumDefinition>, do_parse!(
+          tag!("enum") >>
+    name: identifier >>
+          tag!("{") >>
+    head: opt!(identifier) >>
+    tail: many0!(do_parse!(tag!(",") >> i: identifier >> (i))) >>
+          tag!("}") >>
+    ({
+        let mut values = if let None = head {
+            Vec::new()
+        } else {
+            vec![head.unwrap()]
+        };
+        values.extend(tail);
+        EnumDefinition { name, values }
+    })
+));
+named!(struct_definition<&str, StructDefinition>, do_parse!(
+               tag!("struct") >>
+    name:      identifier >>
+    variables: delimited!(tag!("{"), many1!(
+        do_parse!(v: variable_declaration >> tag!(";") >> (v))
+    ), tag!("}")) >>
+    (StructDefinition { name, variables: NonEmpty::try_from(variables).unwrap() })
+));
+named!(using_for_declaration<&str, UsingForDeclaration>, alt_complete!(using_for | using_for_all));
+named!(using_for_all<&str, UsingForDeclaration>, do_parse!(
+                tag!("using") >>
+    identifier: identifier >>
+                tag!("for") >>
+                tag!("*") >>
+    (UsingForDeclaration::UsingForAll(identifier))
+));
+named!(using_for<&str, UsingForDeclaration>, do_parse!(
+                tag!("using") >>
+    identifier: identifier >>
+                tag!("for") >>
+    type_name:  type_name >>
+    (UsingForDeclaration::UsingFor(identifier, type_name))
+));
+named!(state_variable_declaration<&str, StateVariableDeclaration>, do_parse!(
+    type_name: type_name >>
+    modifiers: many0!(variable_modifier) >>
+    name:      identifier >>
+    value:     opt!(do_parse!(
+           tag!("=") >>
+        v: expression >>
+        (v)
+    )) >>
+    (StateVariableDeclaration { type_name, modifiers, name, value })
+));
+named!(variable_modifier<&str, VariableModifier>, alt_complete!(
+    tag!("public") => {|_| VariableModifier::Public} |
+    tag!("private") => {|_| VariableModifier::Private} |
+    tag!("constant") => {|_| VariableModifier::Constant} |
+    tag!("internal") => {|_| VariableModifier::Internal}
+));
 named!(space<&str, &str>, eat_separator!(" \n\t"));
 named!(address_payable<&str, TypeName>, do_parse!(
     tag!("address") >> space >> tag!("payable") >> (TypeName::AddressPayable)
@@ -722,7 +933,12 @@ pub enum Statement {
     Continue,
     DoWhileStatement(Box<Statement>, Expression),
     Emit(FunctionCall),
-    ForStatement(Option<SimpleStatement>, Option<Expression>, Option<Expression>, Box<Statement>),
+    ForStatement(
+        Option<SimpleStatement>,
+        Option<Expression>,
+        Option<Expression>,
+        Box<Statement>,
+    ),
     IfStatement(IfStatement),
     InlineAssemblyStatement(Option<String>, AssemblyBlock),
     PlaceholderStatement,
@@ -779,11 +995,12 @@ pub struct StructDefinition {
 pub struct ModifierDefinition {
     name: Identifier,
     parameters: Option<Vec<Parameter>>,
+    block: Block,
 }
 
 pub struct FunctionDefinition {
     body: Option<Block>,
-    modifiers: FunctionDefinitionModifier,
+    modifiers: Vec<FunctionDefinitionModifier>,
     name: Option<Identifier>,
     parameters: Vec<Parameter>,
     return_values: Vec<Parameter>,

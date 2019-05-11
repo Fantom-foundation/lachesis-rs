@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 
+#[derive(Debug)]
 pub struct EmptyVectorError;
 
 pub struct NonEmpty<T>(Vec<T>);
