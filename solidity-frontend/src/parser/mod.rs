@@ -28,6 +28,70 @@ fn vec_to_string(s: Vec<char>) -> String {
     s.into_iter().collect::<String>()
 }
 
+macro_rules! extract_string_literal {
+    ($l: ident) => {
+        match $l {
+            Literal::StringLiteral(s) => s,
+            _ => panic!("Not a string!"),
+        }
+    }
+}
+
+named!(source_unit<&str, SourceUnit>, alt_complete!(
+    pragma_directive |
+    import_directive => {|i| SourceUnit::ImportDirective(i)} |
+    contract_definition => {|c| SourceUnit::ContractDefinition(c)}
+));
+
+named!(pragma_directive<&str, SourceUnit>, do_parse!(
+             tag!("pragma") >>
+    version: identifier >>
+             many0!(not!(tag!(";"))) >>
+             tag!(";") >>
+    (SourceUnit::PragmaDirective(version))
+));
+
+named!(import_directive<&str, ImportDirective>, alt_complete!(
+    do_parse!(
+              tag!("import") >>
+        what: string_literal >>
+        name: opt!(do_parse!(tag!("as") >> i: identifier >> (i))) >>
+        (ImportDirective::SimpleImport(extract_string_literal!(what), name))
+    ) |
+    do_parse!(
+              tag!("import") >>
+              tag!("*") >>
+        name: opt!(do_parse!(tag!("as") >> i: identifier >> (i))) >>
+              tag!("from") >>
+        what: string_literal >>
+        (ImportDirective::ImportAllFrom(extract_string_literal!(what), name))
+    ) |
+    do_parse!(
+              tag!("import") >>
+        pair: import_tuple >>
+              tag!("from") >>
+        name: string_literal >>
+        (ImportDirective::ImportFrom(vec![pair], extract_string_literal!(name)))
+    ) |
+    do_parse!(
+               tag!("import") >>
+               tag!("{") >>
+        pairs: do_parse!(
+            head: import_tuple >>
+            tail: many0!(do_parse!(tag!(",") >> t: import_tuple >> (t))) >>
+            ({
+                let mut is = vec![head];
+                is.extend(tail);
+                is
+            })
+        ) >>
+               tag!("}") >>
+               tag!("from") >>
+        name:  string_literal >>
+        (ImportDirective::ImportFrom(pairs, extract_string_literal!(name)))
+    )
+));
+
 named!(contract_definition<&str, ContractDefinition>, do_parse!(
     contract_type:          contract_type >>
     name:                   identifier >>
@@ -91,6 +155,11 @@ named!(statement<&str, Statement>, alt_complete!(
     emit_statement | throw_statement | return_statement | break_statement | simple_statement_statement
 ));
 
+named!(import_tuple<&str, (Identifier, Option<Identifier>)>, do_parse!(
+    name:  identifier >>
+    alias: opt!(do_parse!(tag!("as") >> i:identifier >> (i))) >>
+    ((name, alias))
+));
 named!(contract_type<&str, ContractType>, alt_complete!(
     tag!("contract") => {|_| ContractType::Contract} |
     tag!("library") => {|_| ContractType::Library} |
@@ -1070,7 +1139,7 @@ pub struct UserDefinedTypeName {
 pub enum ImportDirective {
     SimpleImport(String, Option<Identifier>),
     ImportFrom(Vec<(Identifier, Option<Identifier>)>, String),
-    ImportAllFrom(String, Box<Identifier>),
+    ImportAllFrom(String, Option<Identifier>),
 }
 
 pub struct IfStatement {
