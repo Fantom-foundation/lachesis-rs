@@ -1,14 +1,6 @@
 use crate::parser::*;
 use failure::Error;
-use llvm_sys::core::{
-    LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd,
-    LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildSub,
-    LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstPointerNull,
-    LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
-    LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetTypeKind,
-    LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType,
-    LLVMStructCreateNamed, LLVMStructSetBody, LLVMVoidType,
-};
+use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstPointerNull, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMVoidType, LLVMStructTypeInContext, LLVMConstStruct};
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
 use std::collections::HashMap;
@@ -167,6 +159,22 @@ impl<'a> CodeGenerator for Expression {
                     LLVMConstInt(t, value as u64, LLVM_TRUE)
                 })),
             },
+            Expression::PrimaryExpression(PrimaryExpression::Identifier(i)) => {
+                Ok(Some(context.symbols.get(i.as_str()).unwrap().clone()))
+            },
+            Expression::PrimaryExpression(PrimaryExpression::TupleExpression(exps)) => {
+                let maybe_values: Vec<Option<LLVMValueRef>> = exps
+                    .iter()
+                    .map(|e| e.codegen(context))
+                    .collect::<Result<Vec<Option<LLVMValueRef>>, CodeGenerationError>>()?;
+                let mut values: Vec<LLVMValueRef> = maybe_values
+                    .into_iter()
+                    .map(|e| e.unwrap())
+                    .collect();
+                Ok(Some(unsafe {
+                    LLVMConstStruct(values.as_mut_ptr(), values.len() as u32, LLVM_TRUE)
+                }))
+            },
             Expression::GroupExpression(e) => e.codegen(context),
             Expression::LeftUnaryExpression(lue) => lue.codegen(context),
             Expression::RightUnaryExpression(rue) => rue.codegen(context),
@@ -176,9 +184,32 @@ impl<'a> CodeGenerator for Expression {
     }
 }
 
+impl<'a> TypeGenerator for PrimaryExpression {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        match self {
+            PrimaryExpression::TupleExpression(exps) => {
+                let maybe_types: Vec<Option<LLVMTypeRef>> = exps
+                    .iter()
+                    .map(|e| e.typegen(context))
+                    .collect::<Result<Vec<Option<LLVMTypeRef>>, CodeGenerationError>>()?;
+                let mut types: Vec<LLVMTypeRef> = maybe_types
+                    .into_iter()
+                    .map(|t| t.unwrap())
+                    .collect();
+                let tuple_type = unsafe {
+                    LLVMStructTypeInContext(context.context, types.as_mut_ptr(), types.len() as u32, LLVM_TRUE)
+                };
+                Ok(Some(tuple_type))
+            }
+            _ => Err(CodeGenerationError::NotImplementedYet),
+        }
+    }
+}
+
 impl<'a> TypeGenerator for Expression {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
+            Expression::PrimaryExpression(p) => p.typegen(context),
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }
