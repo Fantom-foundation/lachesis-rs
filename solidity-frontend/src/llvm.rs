@@ -1,11 +1,12 @@
 use crate::parser::*;
 use failure::Error;
-use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstPointerNull, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMVoidType, LLVMStructTypeInContext, LLVMConstStruct};
+use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstPointerNull, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMVoidType, LLVMStructTypeInContext, LLVMConstStruct, LLVMGetParam, LLVMConstNull, LLVMBuildRet};
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::str::FromStr;
+use llvm_sys::analysis::{LLVMVerifyFunction, LLVMVerifierFailureAction};
 
 const LLVM_FALSE: LLVMBool = 0 as LLVMBool;
 const LLVM_TRUE: LLVMBool = 1 as LLVMBool;
@@ -467,6 +468,34 @@ impl TypeGenerator for TypeName {
     }
 }
 
+impl TypeGenerator for FunctionDefinition {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        let mut return_types = self.return_values.iter().map(|p| {
+            type_from_type_name(&p.type_name, context).unwrap()
+        }).collect::<Vec<LLVMTypeRef>>();
+        let mut parameter_types = self.parameters.iter().map(|p| {
+            type_from_type_name(&p.type_name, context).unwrap()
+        }).collect::<Vec<LLVMTypeRef>>();
+        let return_type = unsafe {
+            LLVMStructTypeInContext(context.context, return_types.as_mut_ptr(), self.return_values.len() as u32, LLVM_TRUE)
+        };
+        Ok(Some(unsafe {
+            LLVMFunctionType(return_type, parameter_types.as_mut_ptr(), self.parameters.len() as u32, LLVM_FALSE)
+        }))
+    }
+}
+
+impl TypeGenerator for Vec<Parameter> {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        let mut return_types = self.iter().map(|p| {
+            type_from_type_name(&p.type_name, context).unwrap()
+        }).collect::<Vec<LLVMTypeRef>>();
+        Ok(Some(unsafe {
+            LLVMStructTypeInContext(context.context, return_types.as_mut_ptr(), self.len() as u32, LLVM_TRUE)
+        }))
+    }
+}
+
 impl TypeGenerator for ContractPart {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
@@ -488,6 +517,8 @@ impl TypeGenerator for ContractPart {
                 context.type_symbols.insert(e.name.as_str().to_owned(), t);
                 Ok(None)
             }
+            ContractPart::EventDefinition(_) => Ok(None),
+            ContractPart::FunctionDefinition(f) => f.typegen(context),
             ContractPart::StateVariableDeclaration(s) => {
                 Ok(Some(type_from_type_name(&s.type_name, context)?))
             }
@@ -546,7 +577,7 @@ fn default_value(
         TypeName::Mapping(k, v) => {
             let key_type = type_from_elementary_type_name(k, context)?;
             let value_type = type_from_type_name(v, context)?;
-            unsafe { Ok(mapping_value(context, key_type, value_type)) }
+            Ok(mapping_value(context, key_type, value_type))
         }
         TypeName::FunctionTypeName(f) => {
             let function_type =
@@ -572,10 +603,58 @@ impl<'a> CodeGenerator for StateVariableDeclaration {
     }
 }
 
+impl CodeGenerator for FunctionDefinition {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        let prototype = self.typegen(context)?.unwrap();
+        let function = unsafe {
+            LLVMAddFunction(context.module.module, context.module.new_string_ptr("function"), prototype)
+        };
+        let _bb = unsafe {
+            LLVMAppendBasicBlock(function, context.module.new_string_ptr("function_block"))
+        };
+        for (i, p) in self.parameters.iter().enumerate() {
+            let param = match &p.identifier {
+                Some(id) => {
+                    let param = unsafe {
+                        LLVMGetParam(function, i as u32)
+                    };
+                    context.symbols.insert(id.as_str().to_string(), param);
+                },
+                None => {},
+            };
+        }
+        let return_type = self.return_values.typegen(context)?;
+        match return_type {
+            Some(r) => {
+                let return_value = match &self.body {
+                    Some(b) => {
+                        b.iter().fold(unsafe { LLVMConstNull(r) }, |r, s| {
+                            s.codegen(context).unwrap().unwrap()
+                        })
+                    }
+                    None => unsafe { LLVMConstNull(r) },
+                };
+                unsafe {
+                    LLVMBuildRet(context.builder.builder, return_value)
+                };
+            }
+            None => {},
+        };
+        // TODO: Check this
+        let result = unsafe {
+            LLVMVerifyFunction(function, LLVMVerifierFailureAction::LLVMPrintMessageAction)
+        };
+        Ok(Some(function))
+    }
+}
+
 impl<'a> CodeGenerator for ContractPart {
     fn codegen(&self, _context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         match self {
             ContractPart::EnumDefinition(_) => Ok(None),
+            ContractPart::EventDefinition(_) => Ok(None),
+            ContractPart::FunctionDefinition(f) => f.codegen(_context),
+            ContractPart::StructDefinition(_) => Ok(None),
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }

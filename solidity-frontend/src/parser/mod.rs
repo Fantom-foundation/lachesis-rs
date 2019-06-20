@@ -1068,11 +1068,11 @@ pub struct ModifierDefinition {
 }
 
 pub struct FunctionDefinition {
-    body: Option<Block>,
+    pub body: Option<Block>,
     modifiers: Vec<FunctionDefinitionModifier>,
     name: Option<Identifier>,
-    parameters: Vec<Parameter>,
-    return_values: Vec<Parameter>,
+    pub parameters: Vec<Parameter>,
+    pub return_values: Vec<Parameter>,
 }
 
 pub struct EventDefinition {
@@ -1107,9 +1107,9 @@ pub struct ModifierInvocation {
 }
 
 pub struct Parameter {
-    identifier: Option<Identifier>,
+    pub identifier: Option<Identifier>,
     storage: Option<Storage>,
-    type_name: TypeName,
+    pub type_name: TypeName,
 }
 
 pub enum UsingForDeclaration {
