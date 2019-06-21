@@ -34,7 +34,7 @@ macro_rules! extract_string_literal {
             Literal::StringLiteral(s) => s,
             _ => panic!("Not a string!"),
         }
-    }
+    };
 }
 
 named!(source_unit<&str, SourceUnit>, alt_complete!(
@@ -985,6 +985,7 @@ pub struct ContractDefinition {
     pub name: Identifier,
 }
 
+#[derive(Clone)]
 pub enum TypeName {
     Address,
     AddressPayable,
@@ -1022,6 +1023,7 @@ pub enum SimpleStatement {
     VariableDefinition(Vec<VariableDeclaration>, Option<Expression>),
 }
 
+#[derive(Clone)]
 pub enum Expression {
     BinaryExpression(BinaryExpression),
     FunctionCall(FunctionCall),
@@ -1063,8 +1065,8 @@ pub struct StructDefinition {
 
 pub struct ModifierDefinition {
     name: Identifier,
-    parameters: Option<Vec<Parameter>>,
-    block: Block,
+    pub parameters: Option<Vec<Parameter>>,
+    pub block: Block,
 }
 
 pub struct FunctionDefinition {
@@ -1106,6 +1108,7 @@ pub struct ModifierInvocation {
     arguments: Vec<Expression>,
 }
 
+#[derive(Clone)]
 pub struct Parameter {
     pub identifier: Option<Identifier>,
     storage: Option<Storage>,
@@ -1131,6 +1134,7 @@ pub struct StateVariableDeclaration {
     pub value: Option<Expression>,
 }
 
+#[derive(Clone)]
 pub struct UserDefinedTypeName {
     pub base: Identifier,
     members: Vec<Identifier>,
@@ -1154,6 +1158,7 @@ pub struct VariableDeclaration {
     type_name: TypeName,
 }
 
+#[derive(Clone)]
 pub enum LeftUnaryOperator {
     Bang,
     Delete,
@@ -1164,11 +1169,13 @@ pub enum LeftUnaryOperator {
     Plus,
 }
 
+#[derive(Clone)]
 pub enum RightUnaryOperator {
     DoubleDash,
     DoublePlus,
 }
 
+#[derive(Clone)]
 pub enum BinaryOperator {
     Ampersand,
     AmpersandEquals,
@@ -1203,21 +1210,25 @@ pub enum BinaryOperator {
     StarEquals,
 }
 
+#[derive(Clone)]
 pub struct FunctionCall {
     pub callee: Box<Expression>,
     pub arguments: FunctionCallArguments,
 }
 
+#[derive(Clone)]
 pub enum FunctionCallArguments {
     ExpressionList(Vec<Box<Expression>>),
     NameValueList(Vec<NameValue>),
 }
 
+#[derive(Clone)]
 pub struct NameValue {
     parameter: Identifier,
     pub value: Box<Expression>,
 }
 
+#[derive(Clone)]
 pub struct Identifier(String);
 
 impl Identifier {
@@ -1226,51 +1237,60 @@ impl Identifier {
     }
 }
 
+#[derive(Clone)]
 pub enum StateMutability {
     Payable,
     Pure,
     View,
 }
 
+#[derive(Clone)]
 pub enum FunctionModifier {
     External,
     Internal,
     StateMutability(StateMutability),
 }
 
+#[derive(Clone)]
 pub enum Storage {
     Calldata,
     Memory,
     Storage,
 }
 
+#[derive(Clone)]
 pub struct FunctionTypeName {
     pub arguments: Vec<FunctionParameter>,
     modifiers: Vec<FunctionModifier>,
     pub return_values: Vec<FunctionParameter>,
 }
 
+#[derive(Clone)]
 pub struct FunctionParameter {
     pub type_name: TypeName,
     storage: Option<Storage>,
 }
 
+#[derive(Clone)]
 pub struct BinaryExpression {
     left: Box<Expression>,
     op: BinaryOperator,
     right: Box<Expression>,
 }
 
+#[derive(Clone)]
 pub struct LeftUnaryExpression {
     pub value: Box<Expression>,
     pub op: LeftUnaryOperator,
 }
 
+#[derive(Clone)]
 pub struct RightUnaryExpression {
     pub value: Box<Expression>,
     pub op: RightUnaryOperator,
 }
 
+#[derive(Clone)]
 pub enum PrimaryExpression {
     ElementaryTypeName(ElementaryTypeName),
     Identifier(Identifier),
@@ -1278,6 +1298,7 @@ pub enum PrimaryExpression {
     TupleExpression(Vec<Expression>),
 }
 
+#[derive(Clone)]
 pub enum Literal {
     BooleanLiteral(bool),
     HexLiteral(String),
@@ -1288,6 +1309,7 @@ pub enum Literal {
     StringLiteral(String),
 }
 
+#[derive(Clone)]
 pub enum NumberUnit {
     Wei,
     Szabo,
@@ -1301,6 +1323,7 @@ pub enum NumberUnit {
     Years,
 }
 
+#[derive(Clone)]
 pub enum ElementaryTypeName {
     Address,
     Bool,
