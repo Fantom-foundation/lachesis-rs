@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 #[derive(Debug)]
 pub struct EmptyVectorError;
 
-pub struct NonEmpty<T>(Vec<T>);
+pub struct NonEmpty<T>(pub Vec<T>);
 
 impl<T> NonEmpty<T> {
     pub(crate) fn new(first: T) -> NonEmpty<T> {

@@ -549,6 +549,29 @@ impl TypeGenerator for Vec<Parameter> {
     }
 }
 
+impl TypeGenerator for VariableDeclaration {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        self.type_name.typegen(context)
+    }
+}
+
+impl TypeGenerator for StructDefinition {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        let mut struct_types = self.variables.0
+            .iter()
+            .map(|p| type_from_type_name(&p.type_name, context).unwrap())
+            .collect::<Vec<LLVMTypeRef>>();
+        Ok(Some(unsafe {
+            LLVMStructTypeInContext(
+                context.context,
+                struct_types.as_mut_ptr(),
+                struct_types.len() as u32,
+                LLVM_TRUE,
+            )
+        }))
+    }
+}
+
 impl TypeGenerator for ContractPart {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
@@ -568,15 +591,14 @@ impl TypeGenerator for ContractPart {
                     counter += 1;
                 }
                 context.type_symbols.insert(e.name.as_str().to_owned(), t);
-                Ok(None)
+                Ok(Some(t))
             }
             ContractPart::EventDefinition(_) => Ok(None),
             ContractPart::FunctionDefinition(f) => f.typegen(context),
             ContractPart::ModifierDefinition(m) => m.typegen(context),
-            ContractPart::StateVariableDeclaration(s) => {
-                Ok(Some(type_from_type_name(&s.type_name, context)?))
-            }
-            ContractPart::StructDefinition(_) => Ok(None),
+            ContractPart::StateVariableDeclaration(s) =>
+                Ok(Some(type_from_type_name(&s.type_name, context)?)),
+            ContractPart::StructDefinition(s) => s.typegen(context),
             ContractPart::UsingForDeclaration(_) => unimplemented!(),
         }
     }
@@ -760,7 +782,7 @@ impl<'a> CodeGenerator for ContractPart {
                 None => Ok(None),
             },
             ContractPart::StructDefinition(_) => Ok(None),
-            ContractPart::UsingForDeclaration(_) => unimplemented!(),
+            ContractPart::UsingForDeclaration(_) => Ok(None),
         }
     }
 }
@@ -782,8 +804,30 @@ impl<'a> CodeGenerator for Program {
                     for t in c.contract_parts.iter() {
                         let element_type = t.typegen(context)?;
                         if let Some(et) = element_type {
-                            types.push(et);
-                            vals.push(t.codegen(context)?.unwrap());
+                            let val = t.codegen(context)?.unwrap();
+                            types.push(et.clone());
+                            vals.push(val.clone());
+                            let name = match &t {
+                                ContractPart::ModifierDefinition(m) => m.name.as_str().to_owned(),
+                                ContractPart::StateVariableDeclaration(svd) => svd.name.as_str().to_owned(),
+                                ContractPart::FunctionDefinition(f) =>
+                                    f.name.clone().unwrap_or(Identifier("".to_owned())).as_str().to_owned(),
+                                ContractPart::StructDefinition(s) => s.name.as_str().to_owned(),
+                                ContractPart::EventDefinition(e) => e.name.as_str().to_owned(),
+                                ContractPart::EnumDefinition(e) => e.name.as_str().to_owned(),
+                                ContractPart::UsingForDeclaration(_) => panic!("Can't happen"),
+                            };
+                            context.symbols.insert(name.clone(), val.clone());
+                            if let ContractType::Library = c.contract_type {
+                                context.symbols.insert(
+                                    format!("{}.{}", c.name.as_str().to_owned(), name.clone()),
+                                    val
+                                );
+                                context.type_symbols.insert(
+                                    format!("{}.{}", c.name.as_str().to_owned(), name.clone()),
+                                    et
+                                );
+                            }
                         }
                     }
                     unsafe {

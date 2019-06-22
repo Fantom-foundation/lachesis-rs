@@ -980,7 +980,7 @@ pub enum SourceUnit {
 
 pub struct ContractDefinition {
     pub contract_parts: Vec<ContractPart>,
-    contract_type: ContractType,
+    pub contract_type: ContractType,
     inheritance_specifiers: Vec<InheritanceSpecifier>,
     pub name: Identifier,
 }
@@ -1059,12 +1059,12 @@ pub enum ContractPart {
 }
 
 pub struct StructDefinition {
-    name: Identifier,
-    variables: NonEmpty<VariableDeclaration>,
+    pub name: Identifier,
+    pub variables: NonEmpty<VariableDeclaration>,
 }
 
 pub struct ModifierDefinition {
-    name: Identifier,
+    pub name: Identifier,
     pub parameters: Option<Vec<Parameter>>,
     pub block: Block,
 }
@@ -1072,14 +1072,14 @@ pub struct ModifierDefinition {
 pub struct FunctionDefinition {
     pub body: Option<Block>,
     modifiers: Vec<FunctionDefinitionModifier>,
-    name: Option<Identifier>,
+    pub name: Option<Identifier>,
     pub parameters: Vec<Parameter>,
     pub return_values: Vec<Parameter>,
 }
 
 pub struct EventDefinition {
     anonymous: bool,
-    name: Identifier,
+    pub name: Identifier,
     parameters: Vec<EventParameter>,
 }
 
@@ -1130,7 +1130,7 @@ pub enum VariableModifier {
 pub struct StateVariableDeclaration {
     pub type_name: TypeName,
     modifiers: Vec<VariableModifier>,
-    name: Identifier,
+    pub name: Identifier,
     pub value: Option<Expression>,
 }
 
@@ -1155,7 +1155,7 @@ pub struct IfStatement {
 pub struct VariableDeclaration {
     identifier: Identifier,
     storage: Option<Storage>,
-    type_name: TypeName,
+    pub type_name: TypeName,
 }
 
 #[derive(Clone)]
@@ -1229,7 +1229,7 @@ pub struct NameValue {
 }
 
 #[derive(Clone)]
-pub struct Identifier(String);
+pub struct Identifier(pub String);
 
 impl Identifier {
     pub fn as_str(&self) -> &str {
