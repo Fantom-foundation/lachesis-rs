@@ -572,28 +572,50 @@ impl TypeGenerator for StructDefinition {
     }
 }
 
+impl TypeGenerator for EventDefinition {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        let mut event_types = self.parameters
+            .iter()
+            .map(|p| type_from_type_name(&p.type_name, context).unwrap())
+            .collect::<Vec<LLVMTypeRef>>();
+        event_types.push(uint(context, 1));
+        Ok(Some(unsafe {
+            LLVMStructTypeInContext(
+                context.context,
+                event_types.as_mut_ptr(),
+                event_types.len() as u32,
+                LLVM_TRUE,
+            )
+        }))
+    }
+}
+
+impl TypeGenerator for EnumDefinition {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        let mut counter = 0;
+        let s = find_int_size_in_bits(self.values.len());
+        let t = uint(context, s as u32);
+        for member in self.values.iter() {
+            let member_symbol = format!("{}_{}", self.name.as_str(), member.as_str());
+            let value = unsafe { LLVMConstInt(t, counter as u64, LLVM_FALSE) };
+            context.symbols.insert(member_symbol, value.clone());
+            if counter == 0 {
+                context
+                    .symbols
+                    .insert(format!("{}@default", self.name.as_str()), value.clone());
+            }
+            counter += 1;
+        }
+        context.type_symbols.insert(self.name.as_str().to_owned(), t);
+        Ok(Some(t))
+    }
+}
+
 impl TypeGenerator for ContractPart {
     fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
         match self {
-            ContractPart::EnumDefinition(e) => {
-                let mut counter = 0;
-                let s = find_int_size_in_bits(e.values.len());
-                let t = uint(context, s as u32);
-                for member in e.values.iter() {
-                    let member_symbol = format!("{}_{}", e.name.as_str(), member.as_str());
-                    let value = unsafe { LLVMConstInt(t, counter as u64, LLVM_FALSE) };
-                    context.symbols.insert(member_symbol, value.clone());
-                    if counter == 0 {
-                        context
-                            .symbols
-                            .insert(format!("{}@default", e.name.as_str()), value.clone());
-                    }
-                    counter += 1;
-                }
-                context.type_symbols.insert(e.name.as_str().to_owned(), t);
-                Ok(Some(t))
-            }
-            ContractPart::EventDefinition(_) => Ok(None),
+            ContractPart::EnumDefinition(e) => e.typegen(context),
+            ContractPart::EventDefinition(e) => e.typegen(context),
             ContractPart::FunctionDefinition(f) => f.typegen(context),
             ContractPart::ModifierDefinition(m) => m.typegen(context),
             ContractPart::StateVariableDeclaration(s) =>
@@ -770,18 +792,45 @@ impl CodeGenerator for FunctionDefinition {
     }
 }
 
+impl<'a> CodeGenerator for EnumDefinition {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        let t = self.typegen(context)?.unwrap();
+        Ok(Some(unsafe {
+            LLVMConstInt(t, 0 as u64, LLVM_FALSE)
+        }))
+    }
+}
+
+impl<'a> CodeGenerator for EventDefinition {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        let t = self.typegen(context)?.unwrap();
+        Ok(Some(unsafe {
+            LLVMConstNull(t)
+        }))
+    }
+}
+
+impl<'a> CodeGenerator for StructDefinition {
+    fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
+        let t = self.typegen(context)?.unwrap();
+        Ok(Some(unsafe {
+            LLVMConstNull(t)
+        }))
+    }
+}
+
 impl<'a> CodeGenerator for ContractPart {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         match self {
-            ContractPart::EnumDefinition(_) => Ok(None),
-            ContractPart::EventDefinition(_) => Ok(None),
+            ContractPart::EnumDefinition(e) => e.codegen(context),
+            ContractPart::EventDefinition(e) => e.codegen(context),
             ContractPart::FunctionDefinition(f) => f.codegen(context),
             ContractPart::ModifierDefinition(f) => f.codegen(context),
             ContractPart::StateVariableDeclaration(svd) => match &svd.value {
                 Some(v) => v.codegen(context),
                 None => Ok(None),
             },
-            ContractPart::StructDefinition(_) => Ok(None),
+            ContractPart::StructDefinition(s) => s.codegen(context),
             ContractPart::UsingForDeclaration(_) => Ok(None),
         }
     }

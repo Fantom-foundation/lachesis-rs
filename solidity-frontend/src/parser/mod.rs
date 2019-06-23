@@ -1080,7 +1080,7 @@ pub struct FunctionDefinition {
 pub struct EventDefinition {
     anonymous: bool,
     pub name: Identifier,
-    parameters: Vec<EventParameter>,
+    pub parameters: Vec<EventParameter>,
 }
 
 pub struct EnumDefinition {
@@ -1091,7 +1091,7 @@ pub struct EnumDefinition {
 pub struct EventParameter {
     indexed: bool,
     name: Option<Identifier>,
-    type_name: TypeName,
+    pub type_name: TypeName,
 }
 
 pub enum FunctionDefinitionModifier {
