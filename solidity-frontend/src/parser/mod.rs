@@ -970,14 +970,16 @@ named!(elementary_type_name<&str, ElementaryTypeName>, alt_complete!(
     sized_uint_type_name => {|e| e}
 ));
 
-pub struct Program(pub Vec<SourceUnit>);
+pub struct Program(pub NonEmpty<SourceUnit>);
 
+#[derive(Clone)]
 pub enum SourceUnit {
     PragmaDirective(Identifier),
     ImportDirective(ImportDirective),
     ContractDefinition(ContractDefinition),
 }
 
+#[derive(Clone)]
 pub struct ContractDefinition {
     pub contract_parts: Vec<ContractPart>,
     pub contract_type: ContractType,
@@ -997,6 +999,7 @@ pub enum TypeName {
 }
 
 pub type Block = Vec<Statement>;
+#[derive(Clone)]
 pub enum Statement {
     Block(Block),
     Break,
@@ -1018,6 +1021,7 @@ pub enum Statement {
     WhileStatement(Expression, Box<Statement>),
 }
 
+#[derive(Clone)]
 pub enum SimpleStatement {
     ExpressionStatement(Expression),
     VariableDefinition(Vec<VariableDeclaration>, Option<Expression>),
@@ -1037,17 +1041,20 @@ pub enum Expression {
     TernaryOperator(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
+#[derive(Clone)]
 pub enum ContractType {
     Contract,
     Interface,
     Library,
 }
 
+#[derive(Clone)]
 pub struct InheritanceSpecifier {
     parent: UserDefinedTypeName,
     arguments: Vec<Expression>,
 }
 
+#[derive(Clone)]
 pub enum ContractPart {
     EnumDefinition(EnumDefinition),
     EventDefinition(EventDefinition),
@@ -1058,17 +1065,20 @@ pub enum ContractPart {
     UsingForDeclaration(UsingForDeclaration),
 }
 
+#[derive(Clone)]
 pub struct StructDefinition {
     pub name: Identifier,
     pub variables: NonEmpty<VariableDeclaration>,
 }
 
+#[derive(Clone)]
 pub struct ModifierDefinition {
     pub name: Identifier,
     pub parameters: Option<Vec<Parameter>>,
     pub block: Block,
 }
 
+#[derive(Clone)]
 pub struct FunctionDefinition {
     pub body: Option<Block>,
     modifiers: Vec<FunctionDefinitionModifier>,
@@ -1077,23 +1087,27 @@ pub struct FunctionDefinition {
     pub return_values: Vec<Parameter>,
 }
 
+#[derive(Clone)]
 pub struct EventDefinition {
     anonymous: bool,
     pub name: Identifier,
     pub parameters: Vec<EventParameter>,
 }
 
+#[derive(Clone)]
 pub struct EnumDefinition {
     pub name: Identifier,
     pub values: Vec<Identifier>,
 }
 
+#[derive(Clone)]
 pub struct EventParameter {
     indexed: bool,
     name: Option<Identifier>,
     pub type_name: TypeName,
 }
 
+#[derive(Clone)]
 pub enum FunctionDefinitionModifier {
     External,
     Internal,
@@ -1103,6 +1117,7 @@ pub enum FunctionDefinitionModifier {
     StateMutability(StateMutability),
 }
 
+#[derive(Clone)]
 pub struct ModifierInvocation {
     name: Identifier,
     arguments: Vec<Expression>,
@@ -1115,11 +1130,13 @@ pub struct Parameter {
     pub type_name: TypeName,
 }
 
+#[derive(Clone)]
 pub enum UsingForDeclaration {
     UsingForAll(Identifier),
     UsingFor(Identifier, TypeName),
 }
 
+#[derive(Clone)]
 pub enum VariableModifier {
     Constant,
     Internal,
@@ -1127,6 +1144,7 @@ pub enum VariableModifier {
     Public,
 }
 
+#[derive(Clone)]
 pub struct StateVariableDeclaration {
     pub type_name: TypeName,
     modifiers: Vec<VariableModifier>,
@@ -1140,18 +1158,21 @@ pub struct UserDefinedTypeName {
     members: Vec<Identifier>,
 }
 
+#[derive(Clone)]
 pub enum ImportDirective {
     SimpleImport(String, Option<Identifier>),
     ImportFrom(Vec<(Identifier, Option<Identifier>)>, String),
     ImportAllFrom(String, Option<Identifier>),
 }
 
+#[derive(Clone)]
 pub struct IfStatement {
     condition: Expression,
     true_branch: Box<Statement>,
     false_branch: Option<Box<Statement>>,
 }
 
+#[derive(Clone)]
 pub struct VariableDeclaration {
     identifier: Identifier,
     storage: Option<Storage>,
@@ -1336,6 +1357,7 @@ pub enum ElementaryTypeName {
 }
 
 type AssemblyBlock = Vec<Box<AssemblyStatement>>;
+#[derive(Clone)]
 pub enum AssemblyStatement {
     AssemblyBlock(AssemblyBlock),
     AssemblyFunctionDefinition(AssemblyFunctionDefinition),
@@ -1349,6 +1371,7 @@ pub enum AssemblyStatement {
     Continue,
 }
 
+#[derive(Clone)]
 pub struct AssemblyFunctionDefinition {
     block: AssemblyBlock,
     name: Identifier,
@@ -1356,40 +1379,49 @@ pub struct AssemblyFunctionDefinition {
     return_values: Vec<Identifier>,
 }
 
+#[derive(Clone)]
 pub struct AssemblyVariableDeclaration {
     values: Vec<AssemblyExpression>,
     variables: NonEmpty<Identifier>,
 }
 
+#[derive(Clone)]
 pub struct AssemblyAssignment {
     expression: AssemblyExpression,
     variables: NonEmpty<Identifier>,
 }
 
+#[derive(Clone)]
 pub enum AssemblyExpression {
     AssemblyFunctionCall(AssemblyFunctionCall),
     Identifier(Identifier),
     Literal(Literal),
 }
 
+#[derive(Clone)]
 pub struct AssemblyIf {
     condition: AssemblyExpression,
     block: AssemblyBlock,
 }
 
+#[derive(Clone)]
 pub struct AssemblySwitch {
     condition: AssemblyExpression,
     body: AssemblySwitchBody,
 }
 
+#[derive(Clone)]
 pub enum AssemblySwitchBody {
     OnlyDefault(AssemblySwitchDefault),
     CaseList(NonEmpty<AssemblySwitchCase>, Option<AssemblySwitchDefault>),
 }
 
+#[derive(Clone)]
 pub struct AssemblySwitchDefault(AssemblyBlock);
+#[derive(Clone)]
 pub struct AssemblySwitchCase(Literal, AssemblyBlock);
 
+#[derive(Clone)]
 pub struct AssemblyForLoop {
     body: AssemblyBlock,
     increment_expressions: AssemblyBlock,
@@ -1397,6 +1429,7 @@ pub struct AssemblyForLoop {
     stop_condition: AssemblyExpression,
 }
 
+#[derive(Clone)]
 pub struct AssemblyFunctionCall {
     name: Identifier,
     arguments: Vec<AssemblyExpression>,

@@ -40,3 +40,9 @@ impl<T> AsRef<[T]> for NonEmpty<T> {
         self.0.as_ref()
     }
 }
+
+impl<T: Clone> Clone for NonEmpty<T> {
+    fn clone(&self) -> NonEmpty<T> {
+        NonEmpty(self.0.clone())
+    }
+}

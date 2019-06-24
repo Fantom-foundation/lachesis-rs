@@ -701,6 +701,12 @@ impl<'a> CodeGenerator for StateVariableDeclaration {
     }
 }
 
+impl TypeGenerator for StateVariableDeclaration {
+    fn typegen(&self, context: &mut Context) -> Result<Option<LLVMTypeRef>, CodeGenerationError> {
+        self.type_name.typegen(context)
+    }
+}
+
 impl CodeGenerator for ModifierDefinition {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
         let prototype = self.typegen(context)?.unwrap();
@@ -826,19 +832,18 @@ impl<'a> CodeGenerator for ContractPart {
             ContractPart::EventDefinition(e) => e.codegen(context),
             ContractPart::FunctionDefinition(f) => f.codegen(context),
             ContractPart::ModifierDefinition(f) => f.codegen(context),
-            ContractPart::StateVariableDeclaration(svd) => match &svd.value {
-                Some(v) => v.codegen(context),
-                None => Ok(None),
-            },
+            ContractPart::StateVariableDeclaration(svd) => svd.codegen(context),
             ContractPart::StructDefinition(s) => s.codegen(context),
-            ContractPart::UsingForDeclaration(_) => Ok(None),
+            ContractPart::UsingForDeclaration(_) => unimplemented!(),
         }
     }
 }
 
 impl<'a> CodeGenerator for Program {
     fn codegen(&self, context: &mut Context) -> Result<Option<LLVMValueRef>, CodeGenerationError> {
-        for s in self.0.iter() {
+        let mut last = None;
+        let non_empty_list = &self.0;
+        for s in non_empty_list.0.iter() {
             match s {
                 SourceUnit::ContractDefinition(c) => {
                     context.symbols.clear();
@@ -896,12 +901,13 @@ impl<'a> CodeGenerator for Program {
                         )
                     };
                     context.symbols.insert(c.name.as_str().to_owned(), contract);
+                    last = Some(contract.clone());
                 }
                 SourceUnit::ImportDirective(_) => Err(CodeGenerationError::NotImplementedYet)?,
                 SourceUnit::PragmaDirective(_) => Err(CodeGenerationError::NotImplementedYet)?,
             }
         }
-        Ok(None)
+        Ok(last)
     }
 }
 
