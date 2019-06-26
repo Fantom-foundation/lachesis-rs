@@ -1,16 +1,7 @@
 use crate::parser::*;
 use failure::Error;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyFunction};
-use llvm_sys::core::{
-    LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd,
-    LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub,
-    LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstPointerNull,
-    LLVMConstStruct, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose,
-    LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType,
-    LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetTypeKind, LLVMIntTypeInContext,
-    LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody,
-    LLVMStructTypeInContext, LLVMVoidType,
-};
+use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstPointerNull, LLVMConstStruct, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMStructTypeInContext, LLVMVoidType, LLVMGetReturnType, LLVMValueAsBasicBlock, LLVMBuildCondBr, LLVMTypeOf};
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
 use std::collections::HashMap;
@@ -100,6 +91,8 @@ pub enum CodeGenerationError {
     ExpectingFunctionExpression,
     #[fail(display = "Invalid function")]
     InvalidFunction,
+    #[fail(display = "Item not callable")]
+    ItemNotCallable,
 }
 
 pub struct Context {
@@ -217,10 +210,58 @@ impl<'a> TypeGenerator for PrimaryExpression {
     }
 }
 
+impl<'a> TypeGenerator for FunctionCall {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        let callee_type = self.callee.typegen(context)?;
+        if unsafe { LLVMGetTypeKind(callee_type) } == LLVMTypeKind::LLVMFunctionTypeKind {
+            Ok(unsafe {
+                LLVMGetReturnType(callee_type)
+            })
+        } else {
+            Err(CodeGenerationError::ItemNotCallable)
+        }
+    }
+}
+
+impl<'a> TypeGenerator for BinaryExpression {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        unimplemented!()
+    }
+}
+
+impl<'a> TypeGenerator for LeftUnaryExpression {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        unimplemented!()
+    }
+}
+
+impl<'a> TypeGenerator for RightUnaryExpression {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        unimplemented!()
+    }
+}
+
 impl<'a> TypeGenerator for Expression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
         match self {
             Expression::PrimaryExpression(p) => p.typegen(context),
+            Expression::FunctionCall(fc) => fc.typegen(context),
+            Expression::BinaryExpression(bc) => bc.typegen(context),
+            Expression::GroupExpression(ge) => ge.typegen(context),
+            Expression::LeftUnaryExpression(lue) => lue.typegen(context),
+            Expression::NewExpression(t) => t.typegen(context),
+            Expression::RightUnaryExpression(rue) => rue.typegen(context),
+            Expression::TernaryOperator(condition, if_branch, else_branch) => {
+                let if_branch_block = unsafe {
+                    LLVMValueAsBasicBlock(if_branch.codegen(context)?)
+                };
+                let else_branch_block = unsafe {
+                    LLVMValueAsBasicBlock(else_branch.codegen(context)?)
+                };
+                Ok(unsafe {
+                    LLVMTypeOf(LLVMBuildCondBr(context.builder.builder, condition.codegen(context)?, if_branch_block, else_branch_block))
+                })
+            },
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }
