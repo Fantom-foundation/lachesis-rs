@@ -133,10 +133,16 @@ pub trait TypeGenerator {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError>;
 }
 
-impl<'a> CodeGenerator for Expression {
+impl<'a> CodeGenerator for BinaryExpression {
+    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
+        unimplemented!()
+    }
+}
+
+impl<'a> CodeGenerator for PrimaryExpression {
     fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
         match self {
-            Expression::PrimaryExpression(PrimaryExpression::Literal(l)) => match l {
+            PrimaryExpression::Literal(l) => match l {
                 Literal::StringLiteral(s) => Ok(unsafe {
                     LLVMBuildGlobalStringPtr(
                         context.builder.builder,
@@ -164,10 +170,10 @@ impl<'a> CodeGenerator for Expression {
                     LLVMConstInt(t, value as u64, LLVM_TRUE)
                 }),
             },
-            Expression::PrimaryExpression(PrimaryExpression::Identifier(i)) => {
+            PrimaryExpression::Identifier(i) => {
                 Ok(context.symbols.get(i.as_str()).unwrap().clone())
             }
-            Expression::PrimaryExpression(PrimaryExpression::TupleExpression(exps)) => {
+            PrimaryExpression::TupleExpression(exps) => {
                 let maybe_values: Vec<LLVMValueRef> = exps
                     .iter()
                     .map(|e| e.codegen(context))
@@ -178,11 +184,34 @@ impl<'a> CodeGenerator for Expression {
                     LLVMConstStruct(values.as_mut_ptr(), values.len() as u32, LLVM_TRUE)
                 })
             }
+            PrimaryExpression::ElementaryTypeName(etn) => unimplemented!(),
+        }
+    }
+}
+
+impl<'a> CodeGenerator for Expression {
+    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
+        match self {
+            Expression::PrimaryExpression(pe) => pe.codegen(context),
             Expression::GroupExpression(e) => e.codegen(context),
             Expression::LeftUnaryExpression(lue) => lue.codegen(context),
             Expression::RightUnaryExpression(rue) => rue.codegen(context),
             Expression::FunctionCall(f) => f.codegen(context),
-            _ => Err(CodeGenerationError::NotImplementedYet),
+            Expression::TernaryOperator(condition, if_branch, else_branch) => {
+                let if_branch_block = unsafe {
+                    LLVMValueAsBasicBlock(if_branch.codegen(context)?)
+                };
+                let else_branch_block = unsafe {
+                    LLVMValueAsBasicBlock(else_branch.codegen(context)?)
+                };
+                Ok(unsafe {
+                    LLVMBuildCondBr(context.builder.builder, condition.codegen(context)?, if_branch_block, else_branch_block)
+                })
+            }
+            Expression::BinaryExpression(be) => be.codegen(context),
+            Expression::MemberAccess(_object, _property) => unimplemented!(),
+            Expression::IndexAccess(_collection, _index) => unimplemented!(),
+            Expression::NewExpression(_tn) => unimplemented!(),
         }
     }
 }
@@ -205,6 +234,9 @@ impl<'a> TypeGenerator for PrimaryExpression {
                 };
                 Ok(tuple_type)
             }
+            PrimaryExpression::Identifier(id) => Ok(unsafe {
+                LLVMTypeOf(self.codegen(context)?)
+            }),
             _ => Err(CodeGenerationError::NotImplementedYet),
         }
     }
@@ -231,13 +263,13 @@ impl<'a> TypeGenerator for BinaryExpression {
 
 impl<'a> TypeGenerator for LeftUnaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
-        unimplemented!()
+        self.value.typegen(context)
     }
 }
 
 impl<'a> TypeGenerator for RightUnaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
-        unimplemented!()
+        self.value.typegen(context)
     }
 }
 
@@ -251,18 +283,12 @@ impl<'a> TypeGenerator for Expression {
             Expression::LeftUnaryExpression(lue) => lue.typegen(context),
             Expression::NewExpression(t) => t.typegen(context),
             Expression::RightUnaryExpression(rue) => rue.typegen(context),
-            Expression::TernaryOperator(condition, if_branch, else_branch) => {
-                let if_branch_block = unsafe {
-                    LLVMValueAsBasicBlock(if_branch.codegen(context)?)
-                };
-                let else_branch_block = unsafe {
-                    LLVMValueAsBasicBlock(else_branch.codegen(context)?)
-                };
+            Expression::TernaryOperator(_, _, _) =>
                 Ok(unsafe {
-                    LLVMTypeOf(LLVMBuildCondBr(context.builder.builder, condition.codegen(context)?, if_branch_block, else_branch_block))
-                })
-            },
-            _ => Err(CodeGenerationError::NotImplementedYet),
+                    LLVMTypeOf(self.codegen(context)?)
+                }),
+            Expression::IndexAccess(_collection, _index) => unimplemented!(),
+            Expression::MemberAccess(_object, _property) => unimplemented!(),
         }
     }
 }
