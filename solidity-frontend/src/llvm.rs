@@ -1,7 +1,7 @@
 use crate::parser::*;
 use failure::Error;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyFunction};
-use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstPointerNull, LLVMConstStruct, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMStructTypeInContext, LLVMVoidType, LLVMGetReturnType, LLVMValueAsBasicBlock, LLVMBuildCondBr, LLVMTypeOf};
+use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstStruct, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMStructTypeInContext, LLVMVoidType, LLVMGetReturnType, LLVMValueAsBasicBlock, LLVMBuildCondBr, LLVMTypeOf};
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
 use std::collections::HashMap;
@@ -71,8 +71,6 @@ impl Drop for Builder {
 
 #[derive(Debug, Fail)]
 pub enum CodeGenerationError {
-    #[fail(display = "Feature not implemented yet")]
-    NotImplementedYet,
     #[fail(display = "Number parsing error {}", 0)]
     NumberParsingError(String),
     #[fail(display = "(Un)Fixed point numbers are not a stable feature")]
@@ -139,37 +137,43 @@ impl<'a> CodeGenerator for BinaryExpression {
     }
 }
 
+impl<'a> CodeGenerator for Literal {
+    fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
+        match self {
+            Literal::StringLiteral(s) => Ok(unsafe {
+                LLVMBuildGlobalStringPtr(
+                    context.builder.builder,
+                    context.module.new_string_ptr(s),
+                    context.module.new_string_ptr("tempstring"),
+                )
+            }),
+            Literal::HexLiteral(s) => Ok(unsafe {
+                let value = usize::from_str(s).map_err(|_| {
+                    CodeGenerationError::NumberParsingError(s.to_owned().to_owned())
+                })?;
+                let bits = find_int_size_in_bits(value);
+                let t = uint(context, bits as u32);
+                LLVMConstInt(t, value as u64, LLVM_FALSE)
+            }),
+            Literal::BooleanLiteral(b) => Ok(unsafe {
+                LLVMConstInt(uint(context, 1), *b as _, LLVM_FALSE)
+            }),
+            Literal::NumberLiteral { value: s, unit: _ } => Ok(unsafe {
+                let value = usize::from_str(s).map_err(|_| {
+                    CodeGenerationError::NumberParsingError(s.to_owned().to_owned())
+                })?;
+                let bits = find_int_size_in_bits(value);
+                let t = uint(context, bits as u32);
+                LLVMConstInt(t, value as u64, LLVM_TRUE)
+            }),
+        }
+    }
+}
+
 impl<'a> CodeGenerator for PrimaryExpression {
     fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
         match self {
-            PrimaryExpression::Literal(l) => match l {
-                Literal::StringLiteral(s) => Ok(unsafe {
-                    LLVMBuildGlobalStringPtr(
-                        context.builder.builder,
-                        context.module.new_string_ptr(s),
-                        context.module.new_string_ptr("tempstring"),
-                    )
-                }),
-                Literal::HexLiteral(s) => Ok(unsafe {
-                    let value = usize::from_str(s).map_err(|_| {
-                        CodeGenerationError::NumberParsingError(s.to_owned().to_owned())
-                    })?;
-                    let bits = find_int_size_in_bits(value);
-                    let t = uint(context, bits as u32);
-                    LLVMConstInt(t, value as u64, LLVM_FALSE)
-                }),
-                Literal::BooleanLiteral(b) => Ok(unsafe {
-                    LLVMConstInt(uint(context, 1), *b as _, LLVM_FALSE)
-                }),
-                Literal::NumberLiteral { value: s, unit: _ } => Ok(unsafe {
-                    let value = usize::from_str(s).map_err(|_| {
-                        CodeGenerationError::NumberParsingError(s.to_owned().to_owned())
-                    })?;
-                    let bits = find_int_size_in_bits(value);
-                    let t = uint(context, bits as u32);
-                    LLVMConstInt(t, value as u64, LLVM_TRUE)
-                }),
-            },
+            PrimaryExpression::Literal(l) => l.codegen(context),
             PrimaryExpression::Identifier(i) => {
                 Ok(context.symbols.get(i.as_str()).unwrap().clone())
             }
@@ -184,7 +188,9 @@ impl<'a> CodeGenerator for PrimaryExpression {
                     LLVMConstStruct(values.as_mut_ptr(), values.len() as u32, LLVM_TRUE)
                 })
             }
-            PrimaryExpression::ElementaryTypeName(etn) => unimplemented!(),
+            PrimaryExpression::ElementaryTypeName(etn) => Ok(unsafe {
+                LLVMConstNull(etn.typegen(context)?)
+            }),
         }
     }
 }
@@ -216,6 +222,32 @@ impl<'a> CodeGenerator for Expression {
     }
 }
 
+impl<'a> TypeGenerator for Literal {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        match self {
+            Literal::BooleanLiteral(_) => Ok(uint(context, 1)),
+            Literal::HexLiteral(_) => {
+                let s = self.codegen(context)?;
+                Ok(unsafe {
+                    LLVMTypeOf(s)
+                })
+            },
+            Literal::NumberLiteral { .. } => {
+                let s = self.codegen(context)?;
+                Ok(unsafe {
+                    LLVMTypeOf(s)
+                })
+            },
+            Literal::StringLiteral(_) => {
+                let s = self.codegen(context)?;
+                Ok(unsafe {
+                    LLVMTypeOf(s)
+                })
+            },
+        }
+    }
+}
+
 impl<'a> TypeGenerator for PrimaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
         match self {
@@ -237,7 +269,8 @@ impl<'a> TypeGenerator for PrimaryExpression {
             PrimaryExpression::Identifier(id) => Ok(unsafe {
                 LLVMTypeOf(self.codegen(context)?)
             }),
-            _ => Err(CodeGenerationError::NotImplementedYet),
+            PrimaryExpression::ElementaryTypeName(etn) => etn.typegen(context),
+            PrimaryExpression::Literal(l) => l.typegen(context),
         }
     }
 }
@@ -257,13 +290,26 @@ impl<'a> TypeGenerator for FunctionCall {
 
 impl<'a> TypeGenerator for BinaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
-        unimplemented!()
+        match self.op {
+            BinaryOperator::BangEquals => Ok(uint(context, 1)),
+            BinaryOperator::BiggerOrEqualsThan => Ok(uint(context, 1)),
+            BinaryOperator::BiggerThan => Ok(uint(context, 1)),
+            BinaryOperator::DoubleAmpersand => Ok(uint(context, 1)),
+            BinaryOperator::DoubleBar => Ok(uint(context, 1)),
+            BinaryOperator::DoubleEquals => Ok(uint(context, 1)),
+            BinaryOperator::LesserOrEqualsThan => Ok(uint(context, 1)),
+            BinaryOperator::LesserThan => Ok(uint(contexet, 1)),
+            _ => unimplemented!(),
+        }
     }
 }
 
 impl<'a> TypeGenerator for LeftUnaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
-        self.value.typegen(context)
+        match self.op {
+            LeftUnaryOperator::Bang => Ok(uint(context, 1)),
+            _ => self.value.typegen(context),
+        }
     }
 }
 
@@ -295,7 +341,7 @@ impl<'a> TypeGenerator for Expression {
 
 impl<'a> CodeGenerator for Statement {
     fn codegen(&self, _context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
-        Err(CodeGenerationError::NotImplementedYet)
+        unimplemented!()
     }
 }
 
@@ -462,24 +508,23 @@ impl<'a> CodeGenerator for LeftUnaryExpression {
             }
             // TODO: Update symbols
             // TODO: Map LLVMTypeRef to TypeName
-            LeftUnaryOperator::Delete => Err(CodeGenerationError::NotImplementedYet),
+            LeftUnaryOperator::Delete => unimplemented!(),
         }
     }
 }
 
-fn type_from_elementary_type_name(
-    elementary_type_name: &ElementaryTypeName,
-    context: &mut Context,
-) -> Result<LLVMTypeRef, CodeGenerationError> {
-    match elementary_type_name {
-        ElementaryTypeName::String => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
-        ElementaryTypeName::Address => Ok(uint(context, 8 * 20)),
-        ElementaryTypeName::Bool => Ok(uint(context, 1)),
-        ElementaryTypeName::Byte(b) => Ok(uint(context, *b as u32 * 8)),
-        ElementaryTypeName::Uint(b) => Ok(uint(context, *b as u32 * 8)),
-        ElementaryTypeName::Int(b) => Ok(uint(context, *b as u32 * 8)),
-        ElementaryTypeName::Fixed(_, _) | ElementaryTypeName::Ufixed(_, _) => {
-            Err(CodeGenerationError::FixedPointNumbersNotStable)
+impl TypeGenerator for ElementaryTypeName {
+    fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
+        match self {
+            ElementaryTypeName::String => Ok(unsafe { LLVMPointerType(uint(context, 8), 0) }),
+            ElementaryTypeName::Address => Ok(uint(context, 8 * 20)),
+            ElementaryTypeName::Bool => Ok(uint(context, 1)),
+            ElementaryTypeName::Byte(b) => Ok(uint(context, *b as u32 * 8)),
+            ElementaryTypeName::Uint(b) => Ok(uint(context, *b as u32 * 8)),
+            ElementaryTypeName::Int(b) => Ok(uint(context, *b as u32 * 8)),
+            ElementaryTypeName::Fixed(_, _) | ElementaryTypeName::Ufixed(_, _) => {
+                Err(CodeGenerationError::FixedPointNumbersNotStable)
+            }
         }
     }
 }
@@ -489,7 +534,7 @@ fn type_from_type_name(
     context: &mut Context,
 ) -> Result<LLVMTypeRef, CodeGenerationError> {
     match type_name {
-        TypeName::ElementaryTypeName(e) => type_from_elementary_type_name(e, context),
+        TypeName::ElementaryTypeName(e) => e.typegen(context),
         TypeName::ArrayTypeName(t, None) => {
             Ok(unsafe { LLVMArrayType(t.typegen(context)?, 0) })
         }
@@ -513,7 +558,7 @@ fn type_from_type_name(
         TypeName::Address => Ok(uint(context, 20 * 8)),
         TypeName::AddressPayable => Ok(uint(context, 20 * 8)),
         TypeName::Mapping(k, v) => {
-            let key_type = type_from_elementary_type_name(k, context)?;
+            let key_type = k.typegen(context)?;
             let value_type = v.typegen(context)?;
             Ok(mapping(context, key_type, value_type))
         }
@@ -721,7 +766,7 @@ fn default_value(
             }
         },
         TypeName::ArrayTypeName(_, _) => {
-            Ok(unsafe { LLVMConstPointerNull(ty.typegen(context)?) })
+            Ok(unsafe { LLVMConstNull(ty.typegen(context)?) })
         }
         TypeName::UserDefinedTypeName(user_defined_type_name) => context
             .symbols
@@ -735,7 +780,7 @@ fn default_value(
             Ok(unsafe { LLVMConstInt(uint(context, 20 * 8), 0, LLVM_FALSE) })
         }
         TypeName::Mapping(k, v) => {
-            let key_type = type_from_elementary_type_name(k, context)?;
+            let key_type = k.typegen(context)?;
             let value_type = type_from_type_name(v, context)?;
             Ok(mapping_value(context, key_type, value_type))
         }
@@ -958,8 +1003,8 @@ impl<'a> CodeGenerator for Program {
                     context.symbols.insert(c.name.as_str().to_owned(), contract);
                     last = Some(contract.clone());
                 }
-                SourceUnit::ImportDirective(_) => Err(CodeGenerationError::NotImplementedYet)?,
-                SourceUnit::PragmaDirective(_) => Err(CodeGenerationError::NotImplementedYet)?,
+                SourceUnit::ImportDirective(_) => unimplemented!(),
+                SourceUnit::PragmaDirective(_) => unimplemented!(),
             }
         }
         Ok(last.unwrap())

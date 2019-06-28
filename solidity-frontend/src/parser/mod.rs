@@ -1295,7 +1295,7 @@ pub struct FunctionParameter {
 #[derive(Clone)]
 pub struct BinaryExpression {
     left: Box<Expression>,
-    op: BinaryOperator,
+    pub op: BinaryOperator,
     right: Box<Expression>,
 }
 
