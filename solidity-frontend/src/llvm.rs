@@ -91,6 +91,8 @@ pub enum CodeGenerationError {
     InvalidFunction,
     #[fail(display = "Item not callable")]
     ItemNotCallable,
+    #[fail(display = "Argument not of expected kind {:?}", 0)]
+    InvalidArgumentKind(LLVMTypeKind),
 }
 
 pub struct Context {
@@ -288,9 +290,43 @@ impl<'a> TypeGenerator for FunctionCall {
     }
 }
 
+fn type_cohesion(left_type: LLVMTypeRef, right_type: LLVMTypeRef) -> Result<LLVMTypeRef, CodeGenerationError> {
+    let left_type_kind = unsafe {
+        LLVMGetTypeKind(left_type)
+    };
+    let right_type_kind = unsafe {
+        LLVMGetTypeKind(right_type)
+    };
+    if left_type_kind != LLVMTypeKind::LLVMIntegerTypeKind &&
+        left_type_kind != LLVMTypeKind::LLVMDoubleTypeKind &&
+        left_type_kind != LLVMTypeKind::LLVMFloatTypeKind {
+        Err(CodeGenerationError::InvalidArgumentKind(left_type_kind))?
+    }
+    if right_type_kind != LLVMTypeKind::LLVMIntegerTypeKind &&
+        right_type_kind != LLVMTypeKind::LLVMDoubleTypeKind &&
+        right_type_kind != LLVMTypeKind::LLVMFloatTypeKind {
+        Err(CodeGenerationError::InvalidArgumentKind(right_type_kind))?
+    }
+    match (left_type_kind, right_type_kind) {
+        (LLVMTypeKind::LLVMDoubleTypeKind, _) => Ok(left_type),
+        (_, LLVMTypeKind::LLVMDoubleTypeKind) => Ok(right_type),
+        (LLVMTypeKind::LLVMFloatTypeKind, _) => Ok(left_type),
+        (_, LLVMTypeKind::LLVMFloatTypeKind) => Ok(right_type),
+        (LLVMTypeKind::LLVMIntegerTypeKind, LLVMTypeKind::LLVMIntegerTypeKind) => {
+            unimplemented!()
+        },
+        _ => panic!("YOU SHOULDN'T BE HERE"),
+    }
+}
+
 impl<'a> TypeGenerator for BinaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
         match self.op {
+            BinaryOperator::Ampersand => {
+                let left_type = self.left.typegen(context)?;
+                let right_type = self.right.typegen(context)?;
+                type_cohesion(left_type, right_type)
+            },
             BinaryOperator::BangEquals => Ok(uint(context, 1)),
             BinaryOperator::BiggerOrEqualsThan => Ok(uint(context, 1)),
             BinaryOperator::BiggerThan => Ok(uint(context, 1)),
@@ -298,7 +334,7 @@ impl<'a> TypeGenerator for BinaryExpression {
             BinaryOperator::DoubleBar => Ok(uint(context, 1)),
             BinaryOperator::DoubleEquals => Ok(uint(context, 1)),
             BinaryOperator::LesserOrEqualsThan => Ok(uint(context, 1)),
-            BinaryOperator::LesserThan => Ok(uint(contexet, 1)),
+            BinaryOperator::LesserThan => Ok(uint(context, 1)),
             _ => unimplemented!(),
         }
     }
