@@ -1,7 +1,7 @@
 use crate::parser::*;
 use failure::Error;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyFunction};
-use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstStruct, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMStructTypeInContext, LLVMVoidType, LLVMGetReturnType, LLVMValueAsBasicBlock, LLVMBuildCondBr, LLVMTypeOf};
+use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd, LLVMBuildCall, LLVMBuildGlobalStringPtr, LLVMBuildNeg, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray, LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstStruct, LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetParam, LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType, LLVMStructCreateNamed, LLVMStructSetBody, LLVMStructTypeInContext, LLVMVoidType, LLVMGetReturnType, LLVMValueAsBasicBlock, LLVMBuildCondBr, LLVMTypeOf, LLVMGetIntTypeWidth, LLVMGetICmpPredicate, LLVMBuildICmp};
 use llvm_sys::prelude::*;
 use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
 use std::collections::HashMap;
@@ -133,9 +133,37 @@ pub trait TypeGenerator {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError>;
 }
 
+fn number_cast(origin: LLVMValueRef, destiny: LLVMTypeRef) -> LLVMValueRef {
+    let origin_type = unsafe { LLVMTypeOf(origin) };
+    let origin_type_kind = unsafe { LLVMGetTypeKind(origin_type) };
+    let destiny_type_kind = unsafe { LLVMGetTypeKind(destiny) };
+    match (origin_type_kind, destiny_type_kind) {
+        _ => panic!("How did you arrive here?")
+    }
+}
+
 impl<'a> CodeGenerator for BinaryExpression {
     fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
-        unimplemented!()
+        let common_type = type_cohesion(self.left.typegen(context)?, self.right.typegen(context)?)?;
+        let converted_left_value = number_cast(self.left.codegen(context)?, common_type);
+        let converted_right_value = number_cast(self.right.codegen(context)?, common_type);
+        match self.op {
+            BinaryOperator::Equals => {
+                let type_kind = unsafe { LLVMGetTypeKind(common_type) };
+                match type_kind {
+                    LLVMTypeKind::LLVMIntegerTypeKind => {
+                        let predicate = unsafe {
+                            LLVMGetICmpPredicate(converted_left_value)
+                        };
+                        Ok(unsafe {
+                            LLVMBuildICmp(context.builder.builder, predicate, self.left.codegen(context)?, self.right.codegen(context)?, context.module.new_string_ptr("equals"))
+                        })
+                    },
+                    _ => panic!("How did you arrive here?")
+                }
+            },
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -313,7 +341,13 @@ fn type_cohesion(left_type: LLVMTypeRef, right_type: LLVMTypeRef) -> Result<LLVM
         (LLVMTypeKind::LLVMFloatTypeKind, _) => Ok(left_type),
         (_, LLVMTypeKind::LLVMFloatTypeKind) => Ok(right_type),
         (LLVMTypeKind::LLVMIntegerTypeKind, LLVMTypeKind::LLVMIntegerTypeKind) => {
-            unimplemented!()
+            let left_size = unsafe { LLVMGetIntTypeWidth(left_type) };
+            let right_size = unsafe { LLVMGetIntTypeWidth(right_type) };
+            if left_size >= right_size {
+                Ok(left_type)
+            } else {
+                Ok(right_type)
+            }
         },
         _ => panic!("YOU SHOULDN'T BE HERE"),
     }
@@ -322,7 +356,11 @@ fn type_cohesion(left_type: LLVMTypeRef, right_type: LLVMTypeRef) -> Result<LLVM
 impl<'a> TypeGenerator for BinaryExpression {
     fn typegen(&self, context: &mut Context) -> Result<LLVMTypeRef, CodeGenerationError> {
         match self.op {
-            BinaryOperator::Ampersand => {
+            BinaryOperator::Ampersand | BinaryOperator::AmpersandEquals | BinaryOperator::Bar |
+            BinaryOperator::BarEquals | BinaryOperator::DoubleBiggerThan |
+            BinaryOperator::DoubleLesserThan | BinaryOperator::DoubleBiggerThanEquals |
+            BinaryOperator::DoubleLesserThanEquals | BinaryOperator::Hat |
+            BinaryOperator::HatEquals => {
                 let left_type = self.left.typegen(context)?;
                 let right_type = self.right.typegen(context)?;
                 type_cohesion(left_type, right_type)
@@ -335,6 +373,7 @@ impl<'a> TypeGenerator for BinaryExpression {
             BinaryOperator::DoubleEquals => Ok(uint(context, 1)),
             BinaryOperator::LesserOrEqualsThan => Ok(uint(context, 1)),
             BinaryOperator::LesserThan => Ok(uint(context, 1)),
+            BinaryOperator::Equals => self.right.typegen(context),
             _ => unimplemented!(),
         }
     }
