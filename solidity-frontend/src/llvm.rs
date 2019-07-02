@@ -14,7 +14,7 @@ use llvm_sys::core::{
     LLVMValueAsBasicBlock, LLVMVoidType,
 };
 use llvm_sys::prelude::*;
-use llvm_sys::{LLVMBuilder, LLVMModule, LLVMTypeKind};
+use llvm_sys::{LLVMBuilder, LLVMIntPredicate, LLVMModule, LLVMRealPredicate, LLVMTypeKind};
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::str::FromStr;
@@ -161,30 +161,24 @@ fn cmp(
 ) -> LLVMValueRef {
     let type_kind = unsafe { LLVMGetTypeKind(common_type) };
     match type_kind {
-        LLVMTypeKind::LLVMIntegerTypeKind => {
-            let predicate = unsafe { LLVMGetICmpPredicate(converted_left_value) };
-            unsafe {
-                LLVMBuildICmp(
-                    context.builder.builder,
-                    predicate,
-                    converted_left_value,
-                    converted_right_value,
-                    context.module.new_string_ptr("equals"),
-                )
-            }
-        }
-        LLVMTypeKind::LLVMFloatTypeKind => {
-            let predicate = unsafe { LLVMGetFCmpPredicate(converted_left_value) };
-            unsafe {
-                LLVMBuildFCmp(
-                    context.builder.builder,
-                    predicate,
-                    converted_left_value,
-                    converted_right_value,
-                    context.module.new_string_ptr("equals"),
-                )
-            }
-        }
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildICmp(
+                context.builder.builder,
+                LLVMIntPredicate::LLVMIntEQ,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("equals"),
+            )
+        },
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFCmp(
+                context.builder.builder,
+                LLVMRealPredicate::LLVMRealOEQ,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("equals"),
+            )
+        },
         _ => panic!("How did you arrive here?"),
     }
 }
@@ -195,18 +189,27 @@ fn not_cmp(
     converted_left_value: LLVMValueRef,
     converted_right_value: LLVMValueRef,
 ) -> LLVMValueRef {
-    let value = cmp(
-        context,
-        common_type,
-        converted_left_value,
-        converted_right_value,
-    );
-    unsafe {
-        LLVMBuildNot(
-            context.builder.builder,
-            value,
-            context.module.new_string_ptr("Negate equals"),
-        )
+    let type_kind = unsafe { LLVMGetTypeKind(common_type) };
+    match type_kind {
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildICmp(
+                context.builder.builder,
+                LLVMIntPredicate::LLVMIntNE,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("equals"),
+            )
+        },
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFCmp(
+                context.builder.builder,
+                LLVMRealPredicate::LLVMRealONE,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("equals"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
     }
 }
 
@@ -216,12 +219,61 @@ impl<'a> CodeGenerator for BinaryExpression {
         let converted_left_value = number_cast(self.left.codegen(context)?, common_type);
         let converted_right_value = number_cast(self.right.codegen(context)?, common_type);
         match self.op {
+            BinaryOperator::Ampersand => Ok(unsafe {
+                LLVMBuildAnd(
+                    context.builder.builder,
+                    converted_left_value,
+                    converted_right_value,
+                    context.module.new_string_ptr("build and"),
+                )
+            }),
+            // TODO: Side effect, save the left.
+            BinaryOperator::AmpersandEquals => Ok(unsafe {
+                LLVMBuildAnd(
+                    context.builder.builder,
+                    converted_left_value,
+                    converted_right_value,
+                    context.module.new_string_ptr("build and"),
+                )
+            }),
             BinaryOperator::BangEquals => Ok(not_cmp(
                 context,
                 common_type,
                 converted_left_value,
                 converted_right_value,
             )),
+            BinaryOperator::Bar => Ok(unsafe {
+                LLVMBuildOr(
+                    context.builder.builder,
+                    converted_left_value,
+                    converted_right_value,
+                    context.module.new_string_ptr("build or"),
+                )
+            }),
+            // TODO: Side effect, save the left.
+            BinaryOperator::BarEquals => Ok(unsafe {
+                LLVMBuildOr(
+                    context.builder.builder,
+                    converted_left_value,
+                    converted_right_value,
+                    context.module.new_string_ptr("build or"),
+                )
+            }),
+            BinaryOperator::DoubleAmpersand => {
+                let not_converted_left_value = unsafe {
+                    LLVMBuildNeg(
+                        context.builder.builder,
+                        converted_left_value,
+                        context.module.new_string_ptr("not on and"),
+                    )
+                };
+                Ok(ternary(
+                    context,
+                    not_converted_left_value,
+                    converted_left_value,
+                    converted_right_value,
+                ))
+            }
             BinaryOperator::DoubleBar => Ok(ternary(
                 context,
                 converted_left_value,
