@@ -213,6 +213,138 @@ fn not_cmp(
     }
 }
 
+fn gt(
+    context: &mut Context,
+    common_type: LLVMTypeRef,
+    converted_left_value: LLVMValueRef,
+    converted_right_value: LLVMValueRef,
+) -> LLVMValueRef {
+    let type_kind = unsafe { LLVMGetTypeKind(common_type) };
+    match type_kind {
+        /*
+        TODO: Think how to store signed type information
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildICmp(
+                context.builder.builder,
+                LLVMIntPredicate::LLVMIn,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        */
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFCmp(
+                context.builder.builder,
+                LLVMRealPredicate::LLVMRealOGT,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
+fn lt(
+    context: &mut Context,
+    common_type: LLVMTypeRef,
+    converted_left_value: LLVMValueRef,
+    converted_right_value: LLVMValueRef,
+) -> LLVMValueRef {
+    let type_kind = unsafe { LLVMGetTypeKind(common_type) };
+    match type_kind {
+        /*
+        TODO: Think how to store signed type information
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildICmp(
+                context.builder.builder,
+                LLVMIntPredicate::LLVMIn,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        */
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFCmp(
+                context.builder.builder,
+                LLVMRealPredicate::LLVMRealOLT,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
+fn ge(
+    context: &mut Context,
+    common_type: LLVMTypeRef,
+    converted_left_value: LLVMValueRef,
+    converted_right_value: LLVMValueRef,
+) -> LLVMValueRef {
+    let type_kind = unsafe { LLVMGetTypeKind(common_type) };
+    match type_kind {
+        /*
+        TODO: Think how to store signed type information
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildICmp(
+                context.builder.builder,
+                LLVMIntPredicate::LLVMIn,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        */
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFCmp(
+                context.builder.builder,
+                LLVMRealPredicate::LLVMRealOGE,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
+fn le(
+    context: &mut Context,
+    common_type: LLVMTypeRef,
+    converted_left_value: LLVMValueRef,
+    converted_right_value: LLVMValueRef,
+) -> LLVMValueRef {
+    let type_kind = unsafe { LLVMGetTypeKind(common_type) };
+    match type_kind {
+        /*
+        TODO: Think how to store signed type information
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildICmp(
+                context.builder.builder,
+                LLVMIntPredicate::LLVMIn,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        */
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFCmp(
+                context.builder.builder,
+                LLVMRealPredicate::LLVMRealOLE,
+                converted_left_value,
+                converted_right_value,
+                context.module.new_string_ptr("greater than"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
 impl<'a> CodeGenerator for BinaryExpression {
     fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
         let common_type = type_cohesion(self.left.typegen(context)?, self.right.typegen(context)?)?;
@@ -259,6 +391,18 @@ impl<'a> CodeGenerator for BinaryExpression {
                     context.module.new_string_ptr("build or"),
                 )
             }),
+            BinaryOperator::BiggerOrEqualsThan => Ok(ge(
+                context,
+                common_type,
+                converted_left_value,
+                converted_right_value,
+            )),
+            BinaryOperator::BiggerThan => Ok(gt(
+                context,
+                common_type,
+                converted_left_value,
+                converted_right_value,
+            )),
             BinaryOperator::DoubleAmpersand => {
                 let not_converted_left_value = unsafe {
                     LLVMBuildNeg(
@@ -281,6 +425,18 @@ impl<'a> CodeGenerator for BinaryExpression {
                 converted_right_value,
             )),
             BinaryOperator::DoubleEquals => Ok(cmp(
+                context,
+                common_type,
+                converted_left_value,
+                converted_right_value,
+            )),
+            BinaryOperator::LesserOrEqualsThan => Ok(le(
+                context,
+                common_type,
+                converted_left_value,
+                converted_right_value,
+            )),
+            BinaryOperator::LesserThan => Ok(lt(
                 context,
                 common_type,
                 converted_left_value,
