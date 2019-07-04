@@ -3,13 +3,13 @@ use failure::Error;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyFunction};
 use llvm_sys::core::{
     LLVMAddFunction, LLVMAppendBasicBlock, LLVMArrayType, LLVMBuildAdd, LLVMBuildAnd,
-    LLVMBuildCall, LLVMBuildCondBr, LLVMBuildFCmp, LLVMBuildGlobalStringPtr, LLVMBuildICmp,
-    LLVMBuildNeg, LLVMBuildNot, LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray,
-    LLVMConstInt, LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstStruct,
-    LLVMConstStructInContext, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext,
-    LLVMDisposeBuilder, LLVMDisposeModule, LLVMFunctionType, LLVMGetFCmpPredicate,
-    LLVMGetICmpPredicate, LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetReturnType, LLVMGetTypeKind,
-    LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType,
+    LLVMBuildCall, LLVMBuildCondBr, LLVMBuildFAdd, LLVMBuildFCmp, LLVMBuildFDiv, LLVMBuildFMul,
+    LLVMBuildFSub, LLVMBuildGlobalStringPtr, LLVMBuildICmp, LLVMBuildMul, LLVMBuildNeg,
+    LLVMBuildOr, LLVMBuildRet, LLVMBuildSub, LLVMConstArray, LLVMConstInt,
+    LLVMConstIntGetZExtValue, LLVMConstNull, LLVMConstStruct, LLVMConstStructInContext,
+    LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder,
+    LLVMDisposeModule, LLVMFunctionType, LLVMGetIntTypeWidth, LLVMGetParam, LLVMGetReturnType,
+    LLVMGetTypeKind, LLVMIntTypeInContext, LLVMModuleCreateWithNameInContext, LLVMPointerType,
     LLVMStructCreateNamed, LLVMStructSetBody, LLVMStructTypeInContext, LLVMTypeOf,
     LLVMValueAsBasicBlock, LLVMVoidType,
 };
@@ -345,11 +345,118 @@ fn le(
     }
 }
 
+fn multiply(
+    context: &mut Context,
+    kind: LLVMTypeKind,
+    left: LLVMValueRef,
+    right: LLVMValueRef,
+) -> LLVMValueRef {
+    match kind {
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildMul(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("multiply integer"),
+            )
+        },
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFMul(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("multiply float"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
+fn add(
+    context: &mut Context,
+    kind: LLVMTypeKind,
+    left: LLVMValueRef,
+    right: LLVMValueRef,
+) -> LLVMValueRef {
+    match kind {
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildAdd(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("add integer"),
+            )
+        },
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFAdd(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("add float"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
+fn sub(
+    context: &mut Context,
+    kind: LLVMTypeKind,
+    left: LLVMValueRef,
+    right: LLVMValueRef,
+) -> LLVMValueRef {
+    match kind {
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildSub(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("sub integer"),
+            )
+        },
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFSub(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("sub float"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
+fn div(
+    context: &mut Context,
+    kind: LLVMTypeKind,
+    left: LLVMValueRef,
+    right: LLVMValueRef,
+) -> LLVMValueRef {
+    match kind {
+        /*
+        TODO: Handle signed integer.
+        LLVMTypeKind::LLVMIntegerTypeKind => unsafe {
+            LLVMBuildSub(context.builder.builder, left, right, context.module.new_string_ptr("sub integer"))
+        },
+        */
+        LLVMTypeKind::LLVMFloatTypeKind => unsafe {
+            LLVMBuildFDiv(
+                context.builder.builder,
+                left,
+                right,
+                context.module.new_string_ptr("sub float"),
+            )
+        },
+        _ => panic!("How did you arrive here?"),
+    }
+}
+
 impl<'a> CodeGenerator for BinaryExpression {
     fn codegen(&self, context: &mut Context) -> Result<LLVMValueRef, CodeGenerationError> {
         let common_type = type_cohesion(self.left.typegen(context)?, self.right.typegen(context)?)?;
         let converted_left_value = number_cast(self.left.codegen(context)?, common_type);
         let converted_right_value = number_cast(self.right.codegen(context)?, common_type);
+        let type_kind = unsafe { LLVMGetTypeKind(common_type) };
         match self.op {
             BinaryOperator::Ampersand => Ok(unsafe {
                 LLVMBuildAnd(
@@ -403,6 +510,12 @@ impl<'a> CodeGenerator for BinaryExpression {
                 converted_left_value,
                 converted_right_value,
             )),
+            BinaryOperator::Dash => Ok(sub(
+                context,
+                type_kind,
+                converted_left_value,
+                converted_right_value,
+            )),
             BinaryOperator::DoubleAmpersand => {
                 let not_converted_left_value = unsafe {
                     LLVMBuildNeg(
@@ -439,6 +552,24 @@ impl<'a> CodeGenerator for BinaryExpression {
             BinaryOperator::LesserThan => Ok(lt(
                 context,
                 common_type,
+                converted_left_value,
+                converted_right_value,
+            )),
+            BinaryOperator::Plus => Ok(add(
+                context,
+                type_kind,
+                converted_left_value,
+                converted_right_value,
+            )),
+            BinaryOperator::Slash => Ok(div(
+                context,
+                type_kind,
+                converted_left_value,
+                converted_right_value,
+            )),
+            BinaryOperator::Star => Ok(multiply(
+                context,
+                type_kind,
                 converted_left_value,
                 converted_right_value,
             )),
